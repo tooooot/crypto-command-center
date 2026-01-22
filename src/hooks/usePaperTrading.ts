@@ -202,12 +202,12 @@ export const usePaperTrading = (
         const pnlAmount = netValue - position.investedAmount;
         const pnlPercent = (pnlAmount / position.investedAmount) * 100;
 
-        // Log trailing stop update
+        // Log trailing stop update with chaser format
         if (stopUpdated) {
           setTimeout(() => {
             addLogEntry(
-              `[تحديث_الوقف] العملة: ${position.symbol} | الوقف الجديد: $${newTrailingStopPrice.toFixed(6)}`,
-              'info'
+              `[مطاردة] العملة: ${position.symbol} | السعر صعد لـ $${newHighestPrice.toFixed(6)} | الوقف ارتفع لـ $${newTrailingStopPrice.toFixed(6)}`,
+              'success'
             );
           }, 0);
         }
@@ -233,10 +233,10 @@ export const usePaperTrading = (
     });
   }, [coins, closePosition]);
 
-  // Process new opportunities
+  // Process new opportunities - Smart Entry: max 10 positions
   const processOpportunities = useCallback((opportunities: StrategyResult[]) => {
-    // Limit to max 5 open positions
-    if (positions.length >= 5) return;
+    // Limit to max 10 open positions
+    if (positions.length >= 10) return;
 
     opportunities.forEach(opportunity => {
       const opportunityKey = `${opportunity.symbol}-${opportunity.strategy}`;
@@ -262,12 +262,22 @@ export const usePaperTrading = (
     }
   }, [positions, closePosition]);
 
+  // Hard reset - clear all positions and restore balance
+  const hardReset = useCallback((initialBalance: number) => {
+    setPositions([]);
+    setClosedTrades([]);
+    processedOpportunities.current.clear();
+    setVirtualBalance(initialBalance);
+    addLogEntry(`[إعادة_ضبط] تم تصفير المحفظة وإعادة الرصيد إلى ${initialBalance} USDT`, 'warning');
+  }, [setVirtualBalance, addLogEntry]);
+
   return {
     positions,
     closedTrades,
     performanceStats,
     processOpportunities,
     manualClosePosition,
+    hardReset,
     openPositionsCount: positions.length,
     openPositionsValue,
     totalPortfolioValue,

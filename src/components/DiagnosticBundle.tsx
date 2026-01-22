@@ -13,9 +13,11 @@ interface DiagnosticBundleProps {
   totalTrades: number;
   winRate: number;
   totalPnL: number;
+  openPositionsValue: number;
+  totalPortfolioValue: number;
 }
 
-const VERSION = 'v1.2.1-AR';
+const VERSION = 'v1.3.0-AR';
 
 export const DiagnosticBundle = ({
   totalScanned,
@@ -28,6 +30,8 @@ export const DiagnosticBundle = ({
   totalTrades,
   winRate,
   totalPnL,
+  openPositionsValue,
+  totalPortfolioValue,
 }: DiagnosticBundleProps) => {
   const [copied, setCopied] = useState(false);
 
@@ -36,7 +40,12 @@ export const DiagnosticBundle = ({
     الطابع_الزمني: lastUpdate?.toISOString() || new Date().toISOString(),
     النظام: {
       الحالة: 'يعمل بنجاح',
-      مدة_التشغيل: `${Math.floor((Date.now() - (lastUpdate?.getTime() || Date.now())) / 1000)} ثانية`,
+      وضع_التداول: 'Smart Entry + Chaser',
+    },
+    المحفظة: {
+      السيولة_المتاحة: `${virtualBalance.toFixed(2)} USDT`,
+      قيمة_العملات: `${openPositionsValue.toFixed(2)} USDT`,
+      القيمة_الإجمالية: `${totalPortfolioValue.toFixed(2)} USDT`,
     },
     المقاييس: {
       إجمالي_العملات_المفحوصة: totalScanned,
@@ -45,10 +54,9 @@ export const DiagnosticBundle = ({
         استراتيجية_65_ارتداد_RSI: rsiBounceCount,
         الإجمالي: opportunities,
       },
-      الرصيد_الافتراضي: `${virtualBalance.toFixed(2)} USDT`,
     },
     التداول: {
-      الصفقات_المفتوحة: openPositions,
+      الصفقات_المفتوحة: `${openPositions}/10`,
       إجمالي_الصفقات: totalTrades,
       نسبة_النجاح: `${winRate.toFixed(1)}%`,
       الربح_الصافي: `${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`,
@@ -94,9 +102,21 @@ export const DiagnosticBundle = ({
       <div className="p-3 border-t border-border">
         <div className="grid grid-cols-2 gap-3">
           <StatusCard
-            label="المفحوصة"
-            value={totalScanned.toString()}
+            label="السيولة"
+            value={`${virtualBalance.toFixed(2)}`}
+            suffix="USDT"
             status="success"
+          />
+          <StatusCard
+            label="قيمة العملات"
+            value={`${openPositionsValue.toFixed(2)}`}
+            suffix="USDT"
+            status={openPositionsValue > 0 ? 'warning' : 'muted'}
+          />
+          <StatusCard
+            label="الصفقات"
+            value={`${openPositions}/10`}
+            status={openPositions > 0 ? 'warning' : 'muted'}
           />
           <StatusCard
             label="الفرص"
@@ -104,20 +124,9 @@ export const DiagnosticBundle = ({
             status={opportunities > 0 ? 'warning' : 'muted'}
           />
           <StatusCard
-            label="اختراق (10)"
-            value={breakoutCount.toString()}
-            status={breakoutCount > 0 ? 'warning' : 'muted'}
-          />
-          <StatusCard
-            label="ارتداد RSI (65)"
-            value={rsiBounceCount.toString()}
-            status={rsiBounceCount > 0 ? 'warning' : 'muted'}
-          />
-          <StatusCard
-            label="الرصيد"
-            value={`${virtualBalance.toFixed(2)}`}
-            suffix="USDT"
-            status="success"
+            label="الربح الصافي"
+            value={`${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`}
+            status={totalPnL >= 0 ? 'success' : 'muted'}
           />
           <StatusCard
             label="الإصدار"
