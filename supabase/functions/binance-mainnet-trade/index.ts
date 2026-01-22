@@ -11,28 +11,42 @@ const API_KEY = Deno.env.get('BINANCE_MAINNET_API_KEY')?.trim();
 const SECRET_KEY = Deno.env.get('BINANCE_MAINNET_SECRET_KEY')?.trim();
 const PROXY_URL = Deno.env.get('PROXY_SERVER_URL')?.trim();
 
-// Proxy fetch wrapper - routes requests through user's static IP server
+// Proxy fetch wrapper - routes requests through user's static IP server with fallback
 async function proxyFetch(url: string, options: RequestInit): Promise<Response> {
   if (PROXY_URL) {
-    // Route through proxy server
-    const proxyPayload = {
-      url: url,
-      method: options.method || 'GET',
-      headers: options.headers,
-      body: options.body,
-    };
-    
-    console.log(`Routing request through proxy: ${PROXY_URL}`);
-    
-    return await fetch(PROXY_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(proxyPayload),
-    });
+    try {
+      // Try routing through proxy server first
+      const proxyPayload = {
+        url: url,
+        method: options.method || 'GET',
+        headers: options.headers,
+        body: options.body,
+      };
+      
+      console.log(`Routing request through proxy: ${PROXY_URL}`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+      
+      const response = await fetch(PROXY_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(proxyPayload),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      return response;
+    } catch (proxyError: unknown) {
+      // Proxy failed - fallback to direct request
+      const errMsg = proxyError instanceof Error ? proxyError.message : 'Unknown error';
+      console.warn(`Proxy unavailable, falling back to direct: ${errMsg}`);
+      return await fetch(url, options);
+    }
   } else {
-    // Direct request (fallback)
+    // Direct request (no proxy configured)
     return await fetch(url, options);
   }
 }
