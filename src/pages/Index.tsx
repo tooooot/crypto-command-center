@@ -5,37 +5,42 @@ import { DiagnosticBundle } from '@/components/DiagnosticBundle';
 import { MarketGrid } from '@/components/MarketGrid';
 import { OpenPositions } from '@/components/OpenPositions';
 import { PerformanceStats } from '@/components/PerformanceStats';
+import { PendingTrades } from '@/components/PendingTrades';
 import { useEventLog } from '@/hooks/useEventLog';
 import { useBinanceData } from '@/hooks/useBinanceData';
 import { useStrategies } from '@/hooks/useStrategies';
 import { usePaperTrading } from '@/hooks/usePaperTrading';
 import { saveSession, getSession, initDB, fullSystemReset, clearLogs } from '@/lib/indexedDB';
 
-const FALLBACK_BALANCE = 100; // Fallback if API fails
+const FALLBACK_BALANCE = 100;
 
 const Index = () => {
   const [virtualBalance, setVirtualBalance] = useState(FALLBACK_BALANCE);
   const [isPaused, setIsPaused] = useState(false);
   const [isBalanceLoaded, setIsBalanceLoaded] = useState(false);
+  const [isManualConfirmMode, setIsManualConfirmMode] = useState(true); // Manual confirmation for first trade
   const { logs, addLogEntry, clearAllLogs, reloadLogs } = useEventLog();
-  const { coins, loading, error, lastUpdate, refetch } = useBinanceData(addLogEntry);
+  const { coins, loading, error, lastUpdate, refetch, markSymbolInvalid } = useBinanceData(addLogEntry);
   const { results, logStrategyResults } = useStrategies(coins, addLogEntry);
   const {
     positions,
     performanceStats,
+    pendingOpportunities,
     processOpportunities,
     manualClosePosition,
+    confirmPendingOpportunity,
+    dismissPendingOpportunity,
     hardReset,
     openPositionsCount,
     openPositionsValue,
     totalPortfolioValue,
-  } = usePaperTrading(virtualBalance, setVirtualBalance, coins, addLogEntry);
+  } = usePaperTrading(virtualBalance, setVirtualBalance, coins, addLogEntry, isManualConfirmMode);
   const lastLoggedUpdate = useRef<string | null>(null);
 
-  // Fetch real balance from Binance Testnet API
-  const fetchTestnetBalance = useCallback(async (): Promise<number | null> => {
+  // Fetch real balance from Binance Mainnet API
+  const fetchMainnetBalance = useCallback(async (): Promise<number | null> => {
     try {
-      const response = await fetch('https://lpwhiqtclpiuozxdaipc.supabase.co/functions/v1/binance-testnet-trade', {
+      const response = await fetch('https://lpwhiqtclpiuozxdaipc.supabase.co/functions/v1/binance-mainnet-trade', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -46,22 +51,22 @@ const Index = () => {
       const result = await response.json();
       
       if (result.success && result.data?.balance !== undefined) {
-        addLogEntry('[TESTNET] ✓ تم الربط مع تطبيق بينانس (Mock Trading)', 'success');
-        return parseFloat(result.data.balance);
+        addLogEntry('[MAINNET] ✓ تم الربط مع حساب Binance الحقيقي', 'success');
+        return result.data.balance;
       } else {
-        addLogEntry(`[TESTNET] ⚠ فشل جلب الرصيد: ${result.error || 'Unknown'}`, 'warning');
+        addLogEntry(`[MAINNET] ⚠ فشل جلب الرصيد: ${result.error || result.data?.msg || 'Unknown'}`, 'warning');
         return null;
       }
     } catch (error: any) {
-      addLogEntry(`[TESTNET] ✗ خطأ في الاتصال: ${error.message}`, 'error');
+      addLogEntry(`[MAINNET] ✗ خطأ في الاتصال: ${error.message}`, 'error');
       return null;
     }
   }, [addLogEntry]);
 
-  // Handle hard reset - fetch real balance from Testnet
+  // Handle hard reset - fetch real balance from Mainnet
   const handleHardReset = useCallback(async () => {
-    addLogEntry('[إعادة_ضبط] جاري جلب الرصيد الحقيقي من Binance Testnet...', 'info');
-    const realBalance = await fetchTestnetBalance();
+    addLogEntry('[إعادة_ضبط] جاري جلب الرصيد الحقيقي من Binance Mainnet...', 'info');
+    const realBalance = await fetchMainnetBalance();
     
     if (realBalance !== null) {
       hardReset(realBalance);
@@ -70,14 +75,14 @@ const Index = () => {
       hardReset(FALLBACK_BALANCE);
       addLogEntry(`[إعادة_ضبط] فشل جلب الرصيد. استخدام الرصيد الافتراضي: ${FALLBACK_BALANCE} USDT`, 'warning');
     }
-  }, [hardReset, fetchTestnetBalance, addLogEntry]);
+  }, [hardReset, fetchMainnetBalance, addLogEntry]);
 
-  // Handle full system reset (everything) - fetch real balance
+  // Handle full system reset
   const handleSystemReset = useCallback(async () => {
     await fullSystemReset();
     
-    addLogEntry('[إعادة_تعيين_النظام] جاري جلب الرصيد الحقيقي من Binance Testnet...', 'info');
-    const realBalance = await fetchTestnetBalance();
+    addLogEntry('[إعادة_تعيين_النظام] جاري جلب الرصيد الحقيقي من Binance Mainnet...', 'info');
+    const realBalance = await fetchMainnetBalance();
     
     if (realBalance !== null) {
       hardReset(realBalance);
@@ -88,7 +93,7 @@ const Index = () => {
       reloadLogs();
       addLogEntry(`[إعادة_تعيين_النظام] تم تصفير البيانات. الرصيد الافتراضي: ${FALLBACK_BALANCE} USDT`, 'warning');
     }
-  }, [hardReset, reloadLogs, addLogEntry, fetchTestnetBalance]);
+  }, [hardReset, reloadLogs, addLogEntry, fetchMainnetBalance]);
 
   // Handle pause toggle
   const handleTogglePause = useCallback(() => {
@@ -104,22 +109,22 @@ const Index = () => {
     });
   }, [addLogEntry]);
 
-  // Initialize IndexedDB and fetch real balance from Binance Testnet
+  // Initialize IndexedDB and fetch real balance from Binance Mainnet
   useEffect(() => {
     const init = async () => {
       await initDB();
-      addLogEntry('تم تهيئة النظام. تم إنشاء اتصال IndexedDB.', 'success');
+      addLogEntry('تم تهيئة النظام. وضع التداول الحقيقي (Mainnet).', 'success');
+      addLogEntry('[وضع_التأكيد] يجب الموافقة يدوياً على أول صفقة', 'warning');
       
-      // Fetch real balance from Binance Testnet API
-      addLogEntry('[TESTNET] جاري جلب الرصيد الحقيقي من Binance...', 'info');
-      const realBalance = await fetchTestnetBalance();
+      // Fetch real balance from Binance Mainnet API
+      addLogEntry('[MAINNET] جاري جلب الرصيد الحقيقي من Binance...', 'info');
+      const realBalance = await fetchMainnetBalance();
       
       if (realBalance !== null) {
         setVirtualBalance(realBalance);
         setIsBalanceLoaded(true);
-        addLogEntry(`[TESTNET] ✓ الرصيد الحقيقي: ${realBalance.toFixed(2)} USDT`, 'success');
+        addLogEntry(`[MAINNET] ✓ الرصيد الحقيقي: ${realBalance.toFixed(2)} USDT`, 'success');
       } else {
-        // Fallback to session or default
         const session = await getSession();
         if (session) {
           setVirtualBalance(session.virtualBalance);
@@ -131,7 +136,7 @@ const Index = () => {
       }
     };
     init();
-  }, [fetchTestnetBalance]);
+  }, [fetchMainnetBalance]);
 
   // Log strategy results and process opportunities when coins update
   useEffect(() => {
@@ -145,7 +150,7 @@ const Index = () => {
         if (results.totalBreakouts > 0 || results.totalRsiBounces > 0) {
           logStrategyResults(results);
           
-          // Process opportunities for paper trading (only if not paused)
+          // Process opportunities (only if not paused)
           if (!isPaused) {
             const allOpportunities = [...results.breakouts, ...results.rsiBounces];
             processOpportunities(allOpportunities);
@@ -173,6 +178,13 @@ const Index = () => {
     }
   }, [coins, virtualBalance, results]);
 
+  // After first confirmed trade, disable manual confirmation mode
+  useEffect(() => {
+    if (positions.length > 0 && isManualConfirmMode) {
+      // Keep manual mode for safety - user can toggle this off manually if needed
+    }
+  }, [positions.length, isManualConfirmMode]);
+
   const opportunities = useMemo(() => {
     return results.totalBreakouts + results.totalRsiBounces;
   }, [results]);
@@ -189,8 +201,19 @@ const Index = () => {
       />
 
       <main className="flex-1 container py-4 px-4">
+        {/* Pending Trades Alert */}
+        {pendingOpportunities.length > 0 && (
+          <div className="mb-4">
+            <PendingTrades
+              pendingOpportunities={pendingOpportunities}
+              onConfirm={confirmPendingOpportunity}
+              onDismiss={dismissPendingOpportunity}
+            />
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-          {/* Right Panel - Event Log (RTL: appears on right) */}
+          {/* Right Panel - Event Log */}
           <div className="lg:col-span-3 space-y-4">
             <EventLog 
               logs={logs} 
@@ -223,7 +246,7 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Left Panel - Performance Stats & Diagnostic Bundle (RTL: appears on left) */}
+          {/* Left Panel - Performance Stats & Diagnostic Bundle */}
           <div className="lg:col-span-3 space-y-4">
             <div className="h-[300px]">
               <PerformanceStats
