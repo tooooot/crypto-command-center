@@ -1,11 +1,15 @@
 import { Activity, Wifi, WifiOff, Clock } from 'lucide-react';
+import { ControlPanel } from './ControlPanel';
 
 interface HeaderProps {
   isConnected: boolean;
   lastUpdate: Date | null;
+  isPaused: boolean;
+  onTogglePause: () => void;
+  onSystemReset: () => void;
 }
 
-export const Header = ({ isConnected, lastUpdate }: HeaderProps) => {
+export const Header = ({ isConnected, lastUpdate, isPaused, onTogglePause, onSystemReset }: HeaderProps) => {
   return (
     <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
       <div className="container flex items-center justify-between h-14 px-4">
@@ -19,12 +23,19 @@ export const Header = ({ isConnected, lastUpdate }: HeaderProps) => {
               مركز قيادة العملات الرقمية
             </h1>
             <p className="text-[10px] text-muted-foreground tracking-widest">
-              v1.1.0-AR | وضع المحطة الطرفية
+              v1.5.1-AR | وضع المحطة الطرفية
+              {isPaused && <span className="text-terminal-amber ms-2">[متوقف]</span>}
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
+          <ControlPanel 
+            isPaused={isPaused}
+            onTogglePause={onTogglePause}
+            onSystemReset={onSystemReset}
+          />
+
           <div className="flex items-center gap-2 text-xs">
             <Clock className="w-3 h-3 text-muted-foreground" />
             <span className="text-muted-foreground font-mono">

@@ -59,7 +59,7 @@ export const EventLog = ({ logs, onClear, diagnosticData }: EventLogProps) => {
   }, [logs]);
 
   const handleCopy = async () => {
-    const VERSION = 'v1.3.0-AR';
+    const VERSION = 'v1.5.1-AR';
     const logsText = logs.map(log => `[${log.timestamp}] ${getLogPrefix(log.type)} ${log.message}`).join('\n');
     
     const diagnosticBundle = diagnosticData ? {

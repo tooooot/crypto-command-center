@@ -105,3 +105,20 @@ export const getSession = async (): Promise<SessionData | null> => {
     request.onerror = () => reject(request.error);
   });
 };
+
+export const clearSession = async (): Promise<void> => {
+  const database = await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(['session'], 'readwrite');
+    const store = transaction.objectStore('session');
+    const request = store.clear();
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const fullSystemReset = async (): Promise<void> => {
+  await clearLogs();
+  await clearSession();
+  localStorage.clear();
+};

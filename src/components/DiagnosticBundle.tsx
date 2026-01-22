@@ -15,9 +15,10 @@ interface DiagnosticBundleProps {
   totalPnL: number;
   openPositionsValue: number;
   totalPortfolioValue: number;
+  isPaused?: boolean;
 }
 
-const VERSION = 'v1.3.0-AR';
+const VERSION = 'v1.5.1-AR';
 
 export const DiagnosticBundle = ({
   totalScanned,

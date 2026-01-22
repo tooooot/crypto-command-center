@@ -48,5 +48,14 @@ export const useEventLog = () => {
     }
   }, []);
 
-  return { logs, addLogEntry, clearAllLogs };
+  const reloadLogs = useCallback(async () => {
+    try {
+      const savedLogs = await getLogs(200);
+      setLogs(savedLogs);
+    } catch (error) {
+      console.error('Failed to reload logs:', error);
+    }
+  }, []);
+
+  return { logs, addLogEntry, clearAllLogs, reloadLogs };
 };
