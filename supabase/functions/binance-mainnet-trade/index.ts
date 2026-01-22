@@ -38,6 +38,16 @@ async function proxyFetch(url: string, options: RequestInit): Promise<Response> 
       });
       
       clearTimeout(timeoutId);
+      
+      // Check if response is valid JSON (not HTML error page)
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        const textBody = await response.text();
+        console.warn(`Proxy returned non-JSON (${contentType}): ${textBody.slice(0, 100)}`);
+        console.warn('Falling back to direct Binance API...');
+        return await fetch(url, options);
+      }
+      
       return response;
     } catch (proxyError: unknown) {
       // Proxy failed - fallback to direct request
