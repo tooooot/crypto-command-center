@@ -127,6 +127,7 @@ const Index = () => {
         isPaused={isPaused}
         onTogglePause={handleTogglePause}
         onSystemReset={handleSystemReset}
+        positions={positions}
       />
 
       <main className="flex-1 container py-4 px-4">

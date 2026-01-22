@@ -11,6 +11,9 @@ export interface CoinData {
   lowPrice: string;
 }
 
+// Use proxy URL if available, fallback to direct Binance API
+const BINANCE_API_URL = 'https://api.binance.com/api/v3/ticker/24hr';
+
 export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void) => {
   const [coins, setCoins] = useState<CoinData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,7 +24,7 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
     try {
       addLogEntry('جاري الاتصال بـ Binance API...', 'info');
       
-      const response = await fetch('https://api.binance.com/api/v3/ticker/24hr');
+      const response = await fetch(BINANCE_API_URL);
       
       if (!response.ok) {
         throw new Error(`خطأ في API: ${response.status}`);

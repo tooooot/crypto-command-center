@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { CoinData } from './useBinanceData';
 import { StrategyResult } from './useStrategies';
+import { playProfitSound } from '@/lib/sounds';
 
 export interface Position {
   id: string;
@@ -46,6 +47,9 @@ const TRADE_AMOUNT = 10; // USDT per trade
 const TRAILING_STOP_PERCENT = 1; // 1% trailing stop
 const FEE_PERCENT = 0.1; // 0.1% fee per transaction
 const MIN_BALANCE_FOR_TRADE = 10; // Minimum balance required to open a trade
+const MAX_OPEN_POSITIONS = 10; // Maximum concurrent positions
+const PROFIT_LOCK_THRESHOLD = 3; // Lock profit when PnL > 3%
+const PROFIT_LOCK_LEVEL = 2; // Lock at 2% profit
 
 export const usePaperTrading = (
   virtualBalance: number,
@@ -156,6 +160,11 @@ export const usePaperTrading = (
     const pnlSign = pnlAmount >= 0 ? '+' : '';
     const logType = isWin ? 'success' : 'error';
     
+    // Play profit sound on winning trades
+    if (isWin) {
+      playProfitSound();
+    }
+    
     addLogEntry(
       `[${reason}] العملة: ${position.symbol} | السعر: $${currentPrice.toFixed(6)} | الربح/الخسارة: ${pnlSign}${pnlPercent.toFixed(2)}% (${pnlSign}$${pnlAmount.toFixed(4)})`,
       logType
@@ -181,12 +190,30 @@ export const usePaperTrading = (
         let newHighestPrice = position.highestPrice;
         let newTrailingStopPrice = position.trailingStopPrice;
 
+        // Calculate current PnL first
+        const exitFee = (position.quantity * currentPrice) * (FEE_PERCENT / 100);
+        const grossValue = position.quantity * currentPrice;
+        const netValue = grossValue - exitFee;
+        const pnlAmount = netValue - position.investedAmount;
+        const pnlPercent = (pnlAmount / position.investedAmount) * 100;
+
         // Update highest price and trailing stop if price made new high
         let stopUpdated = false;
+        let profitLocked = false;
+        
         if (currentPrice > position.highestPrice) {
           newHighestPrice = currentPrice;
           newTrailingStopPrice = currentPrice * (1 - TRAILING_STOP_PERCENT / 100);
           stopUpdated = true;
+        }
+        
+        // Profit lock: if PnL > 3%, raise stop to lock 2% profit
+        if (pnlPercent > PROFIT_LOCK_THRESHOLD) {
+          const lockPrice = position.entryPrice * (1 + PROFIT_LOCK_LEVEL / 100);
+          if (newTrailingStopPrice < lockPrice) {
+            newTrailingStopPrice = lockPrice;
+            profitLocked = true;
+          }
         }
 
         // Check if trailing stop is hit
@@ -195,19 +222,22 @@ export const usePaperTrading = (
           return;
         }
 
-        // Calculate current PnL
-        const exitFee = (position.quantity * currentPrice) * (FEE_PERCENT / 100);
-        const grossValue = position.quantity * currentPrice;
-        const netValue = grossValue - exitFee;
-        const pnlAmount = netValue - position.investedAmount;
-        const pnlPercent = (pnlAmount / position.investedAmount) * 100;
-
         // Log trailing stop update with chaser format
         if (stopUpdated) {
           setTimeout(() => {
             addLogEntry(
               `[مطاردة] العملة: ${position.symbol} | السعر صعد لـ $${newHighestPrice.toFixed(6)} | الوقف ارتفع لـ $${newTrailingStopPrice.toFixed(6)}`,
               'success'
+            );
+          }, 0);
+        }
+        
+        // Log profit lock
+        if (profitLocked) {
+          setTimeout(() => {
+            addLogEntry(
+              `[تأمين_ربح] العملة: ${position.symbol} | الربح ${pnlPercent.toFixed(2)}% > 3% | الوقف ارتفع لتأمين 2%`,
+              'warning'
             );
           }, 0);
         }
@@ -233,25 +263,34 @@ export const usePaperTrading = (
     });
   }, [coins, closePosition]);
 
-  // Process new opportunities - Smart Entry: max 10 positions
+  // Process new opportunities - Smart Entry: max 10 positions (strict enforcement)
   const processOpportunities = useCallback((opportunities: StrategyResult[]) => {
-    // Limit to max 10 open positions
-    if (positions.length >= 10) return;
+    // Strict enforcement: do NOT open any new positions if at max
+    if (positions.length >= MAX_OPEN_POSITIONS) {
+      return; // Exit immediately, don't process any opportunities
+    }
 
-    opportunities.forEach(opportunity => {
+    const availableSlots = MAX_OPEN_POSITIONS - positions.length;
+    let openedCount = 0;
+
+    for (const opportunity of opportunities) {
+      // Stop if we've filled all available slots
+      if (openedCount >= availableSlots) break;
+      
       const opportunityKey = `${opportunity.symbol}-${opportunity.strategy}`;
       
       // Check if already processed recently (within last minute)
       if (!processedOpportunities.current.has(opportunityKey)) {
         openPosition(opportunity);
         processedOpportunities.current.add(opportunityKey);
+        openedCount++;
         
         // Clear from processed after 60 seconds
         setTimeout(() => {
           processedOpportunities.current.delete(opportunityKey);
         }, 60000);
       }
-    });
+    }
   }, [positions.length, openPosition]);
 
   // Manual close position
