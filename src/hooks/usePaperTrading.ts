@@ -8,7 +8,7 @@ export interface Position {
   symbol: string;
   entryPrice: number;
   currentPrice: number;
-  binanceOrderId?: number; // Track Binance order ID for testnet
+  binanceOrderId?: number;
   quantity: number;
   investedAmount: number;
   highestPrice: number;
@@ -35,6 +35,12 @@ export interface ClosedTrade {
   isWin: boolean;
 }
 
+export interface PendingOpportunity {
+  id: string;
+  opportunity: StrategyResult;
+  detectedAt: Date;
+}
+
 export interface PerformanceStats {
   totalPnL: number;
   totalPnLPercent: number;
@@ -44,22 +50,21 @@ export interface PerformanceStats {
   totalTrades: number;
 }
 
-const TRADE_AMOUNT = 10; // USDT per trade
+const TRADE_AMOUNT = 10; // 10 USDT minimum per trade
 const TRAILING_STOP_PERCENT = 1; // 1% trailing stop
 const FEE_PERCENT = 0.1; // 0.1% fee per transaction
-const MIN_BALANCE_FOR_TRADE = 1; // Reduced for Testnet (was 10)
+const MIN_BALANCE_FOR_TRADE = 10; // Minimum 10 USDT
 const MAX_OPEN_POSITIONS = 10; // Maximum concurrent positions
-const IS_TESTNET_MODE = true; // Testnet mode flag
 const PROFIT_LOCK_THRESHOLD = 3; // Lock profit when PnL > 3%
 const PROFIT_LOCK_LEVEL = 2; // Lock at 2% profit
 
-// Binance Testnet API functions
+// Mainnet API Configuration
 const SUPABASE_URL = 'https://lpwhiqtclpiuozxdaipc.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxwd2hpcXRjbHBpdW96eGRhaXBjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwOTgyODQsImV4cCI6MjA4NDY3NDI4NH0.qV4dfR1ccUQokIflxyfQpkmfs_R4p5HOUWrCdHitAPs';
 
-const callTestnetAPI = async (body: any): Promise<any> => {
+const callMainnetAPI = async (body: any): Promise<any> => {
   try {
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/binance-testnet-trade`, {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/binance-mainnet-trade`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -69,7 +74,7 @@ const callTestnetAPI = async (body: any): Promise<any> => {
     });
     return await response.json();
   } catch (error) {
-    console.error('Testnet API error:', error);
+    console.error('Mainnet API error:', error);
     return { success: false, error: (error as Error).message };
   }
 };
@@ -78,10 +83,12 @@ export const usePaperTrading = (
   virtualBalance: number,
   setVirtualBalance: React.Dispatch<React.SetStateAction<number>>,
   coins: CoinData[],
-  addLogEntry: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void
+  addLogEntry: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void,
+  isManualConfirmMode: boolean = true // Default: require manual confirmation
 ) => {
   const [positions, setPositions] = useState<Position[]>([]);
   const [closedTrades, setClosedTrades] = useState<ClosedTrade[]>([]);
+  const [pendingOpportunities, setPendingOpportunities] = useState<PendingOpportunity[]>([]);
   const processedOpportunities = useRef<Set<string>>(new Set());
 
   // Calculate total value of open positions
@@ -102,32 +109,68 @@ export const usePaperTrading = (
     totalTrades: closedTrades.length,
   };
 
-  // Open a new position
-  const openPosition = useCallback((opportunity: StrategyResult) => {
+  // Execute a buy order (called after manual confirmation or automatically)
+  const executeBuyOrder = useCallback(async (opportunity: StrategyResult): Promise<boolean> => {
+    const entryPrice = parseFloat(opportunity.price);
+    const fee = TRADE_AMOUNT * (FEE_PERCENT / 100);
+    const quantity = (TRADE_AMOUNT - fee) / entryPrice;
+
+    addLogEntry(`[MAINNET] جاري إرسال أمر شراء ${opportunity.symbol} إلى Binance...`, 'info');
+    
+    const result = await callMainnetAPI({
+      action: 'order',
+      symbol: opportunity.symbol,
+      side: 'BUY',
+      quantity: quantity.toFixed(6),
+    });
+
+    if (result.success && result.data?.orderId) {
+      addLogEntry(
+        `[MAINNET] ✓ تم تنفيذ الشراء | Order ID: ${result.data.orderId}`,
+        'success'
+      );
+      return true;
+    } else if (result.data?.msg?.includes('Invalid symbol')) {
+      addLogEntry(`[MAINNET] ⚠ عملة غير صالحة: ${opportunity.symbol} - تم استبعادها`, 'warning');
+      return false;
+    } else {
+      addLogEntry(`[MAINNET] ✗ فشل الشراء: ${result.data?.msg || result.error}`, 'error');
+      return false;
+    }
+  }, [addLogEntry]);
+
+  // Open a new position (with or without manual confirmation)
+  const openPosition = useCallback(async (opportunity: StrategyResult, skipConfirmation: boolean = false) => {
     // Check if we already have a position for this symbol
     const existingPosition = positions.find(p => p.symbol === opportunity.symbol);
     if (existingPosition) return;
 
-    // Check if we have enough balance (flexible for Testnet)
+    // Check balance
     if (virtualBalance < MIN_BALANCE_FOR_TRADE) {
       addLogEntry(`[رفض_الصفقة] الرصيد غير كافٍ (${virtualBalance.toFixed(2)} USDT) - يجب أن يكون ${MIN_BALANCE_FOR_TRADE} USDT على الأقل`, 'error');
       return;
     }
-    
-    // Testnet mode: auto-approve trades
-    if (IS_TESTNET_MODE) {
-      addLogEntry(`[TESTNET] صفقة معتمدة تلقائياً للتداول التجريبي`, 'info');
-    }
 
-    const fee = TRADE_AMOUNT * (FEE_PERCENT / 100);
-    const totalCost = TRADE_AMOUNT;
-    
-    // Additional safety check - ensure balance won't go below 0
-    if (virtualBalance - totalCost < 0) {
-      addLogEntry(`[رفض_الصفقة] الرصيد غير كافٍ لفتح صفقة ${opportunity.symbol}`, 'error');
+    // If manual confirmation mode and not skipping, add to pending
+    if (isManualConfirmMode && !skipConfirmation) {
+      const pendingId = crypto.randomUUID();
+      setPendingOpportunities(prev => [...prev, {
+        id: pendingId,
+        opportunity,
+        detectedAt: new Date(),
+      }]);
+      addLogEntry(
+        `[انتظار_تأكيد] العملة: ${opportunity.symbol} | السعر: $${parseFloat(opportunity.price).toFixed(6)} | الاستراتيجية: ${opportunity.strategyName} ← اضغط "شراء الآن"`,
+        'warning'
+      );
       return;
     }
 
+    // Execute the buy order
+    const success = await executeBuyOrder(opportunity);
+    if (!success) return;
+
+    const fee = TRADE_AMOUNT * (FEE_PERCENT / 100);
     const entryPrice = parseFloat(opportunity.price);
     const quantity = (TRADE_AMOUNT - fee) / entryPrice;
     const trailingStopPrice = entryPrice * (1 - TRAILING_STOP_PERCENT / 100);
@@ -144,32 +187,9 @@ export const usePaperTrading = (
       strategy: opportunity.strategy,
       strategyName: opportunity.strategyName,
       openedAt: new Date(),
-      pnlPercent: -FEE_PERCENT, // Start with fee deducted
+      pnlPercent: -FEE_PERCENT,
       pnlAmount: -fee,
     };
-
-    // Send actual order to Binance Testnet
-    if (IS_TESTNET_MODE) {
-      addLogEntry(`[TESTNET] جاري إرسال أمر شراء ${opportunity.symbol} إلى Binance...`, 'info');
-      
-      callTestnetAPI({
-        action: 'order',
-        symbol: opportunity.symbol,
-        side: 'BUY',
-        quantity: quantity.toFixed(6),
-      }).then(result => {
-        if (result.success && result.data?.orderId) {
-          addLogEntry(
-            `[TESTNET] ✓ تم إرسال أمر الشراء إلى Binance | Order ID: ${result.data.orderId}`,
-            'success'
-          );
-        } else if (result.data?.msg) {
-          addLogEntry(`[TESTNET] ⚠ رد Binance: ${result.data.msg}`, 'warning');
-        }
-      }).catch(err => {
-        addLogEntry(`[TESTNET] ✗ خطأ في إرسال الأمر: ${err.message}`, 'error');
-      });
-    }
 
     setPositions(prev => [...prev, newPosition]);
     setVirtualBalance(prev => Math.max(0, prev - TRADE_AMOUNT));
@@ -178,16 +198,53 @@ export const usePaperTrading = (
       `[شراء] العملة: ${opportunity.symbol} | السعر: $${entryPrice.toFixed(6)} | الكمية: ${quantity.toFixed(4)} | الاستراتيجية: ${opportunity.strategyName}`,
       'success'
     );
-  }, [positions, virtualBalance, setVirtualBalance, addLogEntry]);
+  }, [positions, virtualBalance, setVirtualBalance, addLogEntry, isManualConfirmMode, executeBuyOrder]);
+
+  // Confirm and execute a pending opportunity
+  const confirmPendingOpportunity = useCallback(async (pendingId: string) => {
+    const pending = pendingOpportunities.find(p => p.id === pendingId);
+    if (!pending) return;
+
+    // Remove from pending list
+    setPendingOpportunities(prev => prev.filter(p => p.id !== pendingId));
+    
+    // Execute with confirmation bypassed
+    await openPosition(pending.opportunity, true);
+  }, [pendingOpportunities, openPosition]);
+
+  // Dismiss a pending opportunity
+  const dismissPendingOpportunity = useCallback((pendingId: string) => {
+    setPendingOpportunities(prev => prev.filter(p => p.id !== pendingId));
+    addLogEntry(`[رفض_يدوي] تم تجاهل الفرصة`, 'info');
+  }, [addLogEntry]);
 
   // Close a position
-  const closePosition = useCallback((position: Position, currentPrice: number, reason: string) => {
+  const closePosition = useCallback(async (position: Position, currentPrice: number, reason: string) => {
     const exitFee = (position.quantity * currentPrice) * (FEE_PERCENT / 100);
     const grossValue = position.quantity * currentPrice;
     const netValue = grossValue - exitFee;
     const pnlAmount = netValue - position.investedAmount;
     const pnlPercent = (pnlAmount / position.investedAmount) * 100;
     const isWin = pnlAmount > 0;
+
+    // Send sell order to Binance Mainnet
+    addLogEntry(`[MAINNET] جاري إرسال أمر بيع ${position.symbol} إلى Binance...`, 'info');
+    
+    const result = await callMainnetAPI({
+      action: 'order',
+      symbol: position.symbol,
+      side: 'SELL',
+      quantity: position.quantity.toFixed(6),
+    });
+
+    if (result.success && result.data?.orderId) {
+      addLogEntry(
+        `[MAINNET] ✓ تم تنفيذ البيع | Order ID: ${result.data.orderId}`,
+        'success'
+      );
+    } else if (result.data?.msg) {
+      addLogEntry(`[MAINNET] ⚠ رد Binance: ${result.data.msg}`, 'warning');
+    }
 
     const closedTrade: ClosedTrade = {
       id: position.id,
@@ -204,29 +261,6 @@ export const usePaperTrading = (
       isWin,
     };
 
-    // Send sell order to Binance Testnet
-    if (IS_TESTNET_MODE) {
-      addLogEntry(`[TESTNET] جاري إرسال أمر بيع ${position.symbol} إلى Binance...`, 'info');
-      
-      callTestnetAPI({
-        action: 'order',
-        symbol: position.symbol,
-        side: 'SELL',
-        quantity: position.quantity.toFixed(6),
-      }).then(result => {
-        if (result.success && result.data?.orderId) {
-          addLogEntry(
-            `[TESTNET] ✓ تم إرسال أمر البيع إلى Binance | Order ID: ${result.data.orderId}`,
-            'success'
-          );
-        } else if (result.data?.msg) {
-          addLogEntry(`[TESTNET] ⚠ رد Binance: ${result.data.msg}`, 'warning');
-        }
-      }).catch(err => {
-        addLogEntry(`[TESTNET] ✗ خطأ في إرسال أمر البيع: ${err.message}`, 'error');
-      });
-    }
-
     setClosedTrades(prev => [...prev, closedTrade]);
     setPositions(prev => prev.filter(p => p.id !== position.id));
     setVirtualBalance(prev => prev + netValue);
@@ -234,7 +268,6 @@ export const usePaperTrading = (
     const pnlSign = pnlAmount >= 0 ? '+' : '';
     const logType = isWin ? 'success' : 'error';
     
-    // Play profit sound on winning trades
     if (isWin) {
       playProfitSound();
     }
@@ -264,14 +297,12 @@ export const usePaperTrading = (
         let newHighestPrice = position.highestPrice;
         let newTrailingStopPrice = position.trailingStopPrice;
 
-        // Calculate current PnL first
         const exitFee = (position.quantity * currentPrice) * (FEE_PERCENT / 100);
         const grossValue = position.quantity * currentPrice;
         const netValue = grossValue - exitFee;
         const pnlAmount = netValue - position.investedAmount;
         const pnlPercent = (pnlAmount / position.investedAmount) * 100;
 
-        // Update highest price and trailing stop if price made new high
         let stopUpdated = false;
         let profitLocked = false;
         
@@ -281,7 +312,6 @@ export const usePaperTrading = (
           stopUpdated = true;
         }
         
-        // Profit lock: if PnL > 3%, raise stop to lock 2% profit
         if (pnlPercent > PROFIT_LOCK_THRESHOLD) {
           const lockPrice = position.entryPrice * (1 + PROFIT_LOCK_LEVEL / 100);
           if (newTrailingStopPrice < lockPrice) {
@@ -290,13 +320,11 @@ export const usePaperTrading = (
           }
         }
 
-        // Check if trailing stop is hit
         if (currentPrice <= newTrailingStopPrice) {
           positionsToClose.push({ position, currentPrice });
           return;
         }
 
-        // Log trailing stop update with chaser format
         if (stopUpdated) {
           setTimeout(() => {
             addLogEntry(
@@ -306,7 +334,6 @@ export const usePaperTrading = (
           }, 0);
         }
         
-        // Log profit lock
         if (profitLocked) {
           setTimeout(() => {
             addLogEntry(
@@ -326,7 +353,6 @@ export const usePaperTrading = (
         });
       });
 
-      // Close positions that hit trailing stop (outside of setState)
       positionsToClose.forEach(({ position, currentPrice }) => {
         setTimeout(() => {
           closePosition(position, currentPrice, 'بيع_وقف_زاحف');
@@ -337,29 +363,25 @@ export const usePaperTrading = (
     });
   }, [coins, closePosition]);
 
-  // Process new opportunities - Smart Entry: max 10 positions (strict enforcement)
+  // Process new opportunities
   const processOpportunities = useCallback((opportunities: StrategyResult[]) => {
-    // Strict enforcement: do NOT open any new positions if at max
     if (positions.length >= MAX_OPEN_POSITIONS) {
-      return; // Exit immediately, don't process any opportunities
+      return;
     }
 
     const availableSlots = MAX_OPEN_POSITIONS - positions.length;
     let openedCount = 0;
 
     for (const opportunity of opportunities) {
-      // Stop if we've filled all available slots
       if (openedCount >= availableSlots) break;
       
       const opportunityKey = `${opportunity.symbol}-${opportunity.strategy}`;
       
-      // Check if already processed recently (within last minute)
       if (!processedOpportunities.current.has(opportunityKey)) {
         openPosition(opportunity);
         processedOpportunities.current.add(opportunityKey);
         openedCount++;
         
-        // Clear from processed after 60 seconds
         setTimeout(() => {
           processedOpportunities.current.delete(opportunityKey);
         }, 60000);
@@ -375,10 +397,11 @@ export const usePaperTrading = (
     }
   }, [positions, closePosition]);
 
-  // Hard reset - clear all positions and restore balance
+  // Hard reset
   const hardReset = useCallback((initialBalance: number) => {
     setPositions([]);
     setClosedTrades([]);
+    setPendingOpportunities([]);
     processedOpportunities.current.clear();
     setVirtualBalance(initialBalance);
     addLogEntry(`[إعادة_ضبط] تم تصفير المحفظة وإعادة الرصيد إلى ${initialBalance} USDT`, 'warning');
@@ -388,8 +411,11 @@ export const usePaperTrading = (
     positions,
     closedTrades,
     performanceStats,
+    pendingOpportunities,
     processOpportunities,
     manualClosePosition,
+    confirmPendingOpportunity,
+    dismissPendingOpportunity,
     hardReset,
     openPositionsCount: positions.length,
     openPositionsValue,

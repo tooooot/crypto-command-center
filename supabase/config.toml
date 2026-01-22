@@ -2,3 +2,6 @@ project_id = "lpwhiqtclpiuozxdaipc"
 
 [functions.binance-testnet-trade]
 verify_jwt = false
+
+[functions.binance-mainnet-trade]
+verify_jwt = false
