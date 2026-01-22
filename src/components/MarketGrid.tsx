@@ -40,7 +40,7 @@ const formatNumber = (num: string | number, decimals = 2) => {
 
 const formatPrice = (price: string) => {
   const num = parseFloat(price);
-  if (num >= 1000) return num.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  if (num >= 1000) return num.toLocaleString('ar-SA', { maximumFractionDigits: 2 });
   if (num >= 1) return num.toFixed(2);
   if (num >= 0.0001) return num.toFixed(4);
   return num.toFixed(8);
@@ -101,12 +101,12 @@ export const MarketGrid = ({ coins, loading, onRefresh }: MarketGridProps) => {
 
   const SortIcon = ({ columnKey }: { columnKey: SortKey }) => {
     if (sortKey !== columnKey) {
-      return <ArrowUpDown className="w-3 h-3 ml-1 opacity-50" />;
+      return <ArrowUpDown className="w-3 h-3 me-1 opacity-50" />;
     }
     return sortDirection === 'asc' ? (
-      <ArrowUp className="w-3 h-3 ml-1 text-terminal-green" />
+      <ArrowUp className="w-3 h-3 me-1 text-terminal-green" />
     ) : (
-      <ArrowDown className="w-3 h-3 ml-1 text-terminal-green" />
+      <ArrowDown className="w-3 h-3 me-1 text-terminal-green" />
     );
   };
 
@@ -115,20 +115,20 @@ export const MarketGrid = ({ coins, loading, onRefresh }: MarketGridProps) => {
       <div className="flex items-center justify-between p-3 border-b border-border">
         <div className="flex items-center gap-2">
           <TrendingUp className="w-4 h-4 text-terminal-green" />
-          <span className="text-sm font-medium text-terminal-green">MARKET_GRID</span>
+          <span className="text-sm font-medium text-terminal-green">شبكة_السوق</span>
           <span className="text-xs text-muted-foreground">
-            ({filteredAndSortedCoins.length} assets)
+            ({filteredAndSortedCoins.length} أصل)
           </span>
         </div>
 
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Search className="w-3 h-3 absolute start-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search..."
+              placeholder="بحث..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-7 w-32 pl-7 text-xs bg-secondary/50 border-border"
+              className="h-7 w-32 ps-7 text-xs bg-secondary/50 border-border"
             />
           </div>
           <Button
@@ -151,7 +151,7 @@ export const MarketGrid = ({ coins, loading, onRefresh }: MarketGridProps) => {
         <Table>
           <TableHeader className="sticky top-0 bg-card z-10">
             <TableRow className="border-border hover:bg-transparent">
-              <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground w-8">
+              <TableHead className="text-[10px] uppercase tracking-wider text-muted-foreground w-8 text-center">
                 #
               </TableHead>
               <TableHead
@@ -159,35 +159,35 @@ export const MarketGrid = ({ coins, loading, onRefresh }: MarketGridProps) => {
                 onClick={() => handleSort('symbol')}
               >
                 <div className="flex items-center">
-                  Asset
                   <SortIcon columnKey="symbol" />
+                  الأصل
                 </div>
               </TableHead>
               <TableHead
-                className="text-[10px] uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-foreground transition-colors text-right"
+                className="text-[10px] uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-foreground transition-colors text-start"
                 onClick={() => handleSort('price')}
               >
-                <div className="flex items-center justify-end">
-                  Price
+                <div className="flex items-center">
                   <SortIcon columnKey="price" />
+                  السعر
                 </div>
               </TableHead>
               <TableHead
-                className="text-[10px] uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-foreground transition-colors text-right"
+                className="text-[10px] uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-foreground transition-colors text-start"
                 onClick={() => handleSort('priceChangePercent')}
               >
-                <div className="flex items-center justify-end">
-                  24h %
+                <div className="flex items-center">
                   <SortIcon columnKey="priceChangePercent" />
+                  التغير 24س
                 </div>
               </TableHead>
               <TableHead
-                className="text-[10px] uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-foreground transition-colors text-right"
+                className="text-[10px] uppercase tracking-wider text-muted-foreground cursor-pointer hover:text-foreground transition-colors text-start"
                 onClick={() => handleSort('quoteVolume')}
               >
-                <div className="flex items-center justify-end">
-                  Volume
+                <div className="flex items-center">
                   <SortIcon columnKey="quoteVolume" />
+                  الحجم
                 </div>
               </TableHead>
             </TableRow>
@@ -202,7 +202,7 @@ export const MarketGrid = ({ coins, loading, onRefresh }: MarketGridProps) => {
                   key={coin.symbol}
                   className="border-border hover:bg-secondary/30 transition-colors"
                 >
-                  <TableCell className="text-xs text-muted-foreground py-2">
+                  <TableCell className="text-xs text-muted-foreground py-2 text-center">
                     {index + 1}
                   </TableCell>
                   <TableCell className="py-2">
@@ -211,10 +211,10 @@ export const MarketGrid = ({ coins, loading, onRefresh }: MarketGridProps) => {
                       <span className="text-[10px] text-muted-foreground">/USDT</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-right py-2">
+                  <TableCell className="text-start py-2">
                     <span className="text-sm font-mono">${formatPrice(coin.price)}</span>
                   </TableCell>
-                  <TableCell className="text-right py-2">
+                  <TableCell className="text-start py-2">
                     <span
                       className={`text-sm font-mono ${
                         isPositive ? 'text-terminal-green' : 'text-terminal-red'
@@ -224,7 +224,7 @@ export const MarketGrid = ({ coins, loading, onRefresh }: MarketGridProps) => {
                       {changePercent.toFixed(2)}%
                     </span>
                   </TableCell>
-                  <TableCell className="text-right py-2">
+                  <TableCell className="text-start py-2">
                     <span className="text-sm font-mono text-muted-foreground">
                       ${formatNumber(coin.quoteVolume)}
                     </span>

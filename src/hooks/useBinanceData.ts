@@ -19,16 +19,16 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
 
   const fetchData = useCallback(async () => {
     try {
-      addLogEntry('Initiating Binance API connection...', 'info');
+      addLogEntry('جاري الاتصال بـ Binance API...', 'info');
       
       const response = await fetch('https://api.binance.com/api/v3/ticker/24hr');
       
       if (!response.ok) {
-        throw new Error(`API Error: ${response.status}`);
+        throw new Error(`خطأ في API: ${response.status}`);
       }
 
       const data = await response.json();
-      addLogEntry('Data received. Processing 100 top assets by volume...', 'info');
+      addLogEntry('تم استلام البيانات. جاري معالجة أفضل 100 أصل بالحجم...', 'info');
 
       // Filter USDT pairs and sort by quote volume
       const usdtPairs = data
@@ -49,21 +49,12 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
       setCoins(usdtPairs);
       setLastUpdate(new Date());
       setError(null);
-      addLogEntry(`Scan complete. ${usdtPairs.length} assets indexed successfully.`, 'success');
-      
-      // Check for opportunities (coins with >5% change)
-      const opportunities = usdtPairs.filter(
-        (coin: CoinData) => Math.abs(parseFloat(coin.priceChangePercent)) > 5
-      );
-      
-      if (opportunities.length > 0) {
-        addLogEntry(`Alert: ${opportunities.length} high-volatility opportunities detected.`, 'warning');
-      }
+      addLogEntry(`اكتمل الفحص. تم فهرسة ${usdtPairs.length} أصل بنجاح.`, 'success');
 
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      const errorMessage = err instanceof Error ? err.message : 'خطأ غير معروف';
       setError(errorMessage);
-      addLogEntry(`Connection error: ${errorMessage}`, 'error');
+      addLogEntry(`خطأ في الاتصال: ${errorMessage}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -74,7 +65,7 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
     
     // Refresh every 30 seconds
     const interval = setInterval(() => {
-      addLogEntry('Auto-refresh cycle initiated...', 'info');
+      addLogEntry('بدء دورة التحديث التلقائي...', 'info');
       fetchData();
     }, 30000);
 

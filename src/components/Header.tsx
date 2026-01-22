@@ -16,10 +16,10 @@ export const Header = ({ isConnected, lastUpdate }: HeaderProps) => {
           </div>
           <div>
             <h1 className="text-sm font-semibold tracking-wider text-terminal-green text-glow-green">
-              CRYPTO COMMAND CENTER
+              مركز قيادة العملات الرقمية
             </h1>
             <p className="text-[10px] text-muted-foreground tracking-widest">
-              v1.0.0 | TERMINAL MODE
+              v1.1.0-AR | وضع المحطة الطرفية
             </p>
           </div>
         </div>
@@ -27,9 +27,9 @@ export const Header = ({ isConnected, lastUpdate }: HeaderProps) => {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-xs">
             <Clock className="w-3 h-3 text-muted-foreground" />
-            <span className="text-muted-foreground">
+            <span className="text-muted-foreground font-mono">
               {lastUpdate
-                ? lastUpdate.toLocaleTimeString('en-US', { hour12: false })
+                ? lastUpdate.toLocaleTimeString('ar-SA', { hour12: false })
                 : '--:--:--'}
             </span>
           </div>
@@ -38,13 +38,13 @@ export const Header = ({ isConnected, lastUpdate }: HeaderProps) => {
             {isConnected ? (
               <>
                 <Wifi className="w-4 h-4 text-terminal-green" />
-                <span className="text-xs text-terminal-green">CONNECTED</span>
+                <span className="text-xs text-terminal-green">متصل</span>
                 <span className="w-2 h-2 bg-terminal-green rounded-full glow-green animate-pulse" />
               </>
             ) : (
               <>
                 <WifiOff className="w-4 h-4 text-terminal-red" />
-                <span className="text-xs text-terminal-red">DISCONNECTED</span>
+                <span className="text-xs text-terminal-red">غير متصل</span>
                 <span className="w-2 h-2 bg-terminal-red rounded-full glow-red" />
               </>
             )}
