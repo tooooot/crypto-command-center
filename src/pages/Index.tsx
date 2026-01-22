@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Header } from '@/components/Header';
 import { EventLog } from '@/components/EventLog';
 import { DiagnosticBundle } from '@/components/DiagnosticBundle';
 import { MarketGrid } from '@/components/MarketGrid';
 import { useEventLog } from '@/hooks/useEventLog';
 import { useBinanceData } from '@/hooks/useBinanceData';
+import { useStrategies } from '@/hooks/useStrategies';
 import { saveSession, getSession, initDB } from '@/lib/indexedDB';
 
 const INITIAL_BALANCE = 100;
@@ -13,23 +14,46 @@ const Index = () => {
   const [virtualBalance, setVirtualBalance] = useState(INITIAL_BALANCE);
   const { logs, addLogEntry, clearAllLogs } = useEventLog();
   const { coins, loading, error, lastUpdate, refetch } = useBinanceData(addLogEntry);
+  const { results, logStrategyResults } = useStrategies(coins, addLogEntry);
+  const lastLoggedUpdate = useRef<string | null>(null);
 
   // Initialize IndexedDB and load session
   useEffect(() => {
     const init = async () => {
       await initDB();
-      addLogEntry('System initialized. IndexedDB connection established.', 'success');
+      addLogEntry('تم تهيئة النظام. تم إنشاء اتصال IndexedDB.', 'success');
       
       const session = await getSession();
       if (session) {
         setVirtualBalance(session.virtualBalance);
-        addLogEntry(`Session restored. Balance: ${session.virtualBalance.toFixed(2)} USDT`, 'info');
+        addLogEntry(`تم استعادة الجلسة. الرصيد: ${session.virtualBalance.toFixed(2)} USDT`, 'info');
       } else {
-        addLogEntry(`New session created. Virtual balance: ${INITIAL_BALANCE} USDT`, 'info');
+        addLogEntry(`تم إنشاء جلسة جديدة. الرصيد الافتراضي: ${INITIAL_BALANCE} USDT`, 'info');
       }
     };
     init();
   }, []);
+
+  // Log strategy results when coins update
+  useEffect(() => {
+    if (coins.length > 0 && lastUpdate) {
+      const updateKey = lastUpdate.toISOString();
+      if (lastLoggedUpdate.current !== updateKey) {
+        lastLoggedUpdate.current = updateKey;
+        
+        addLogEntry(`[فحص_الاستراتيجيات] جاري تحليل ${coins.length} عملة...`, 'info');
+        
+        if (results.totalBreakouts > 0 || results.totalRsiBounces > 0) {
+          logStrategyResults(results);
+        }
+        
+        addLogEntry(
+          `[نتائج_الفحص] استراتيجية 10: ${results.totalBreakouts} | استراتيجية 65: ${results.totalRsiBounces}`,
+          results.totalBreakouts > 0 || results.totalRsiBounces > 0 ? 'warning' : 'info'
+        );
+      }
+    }
+  }, [coins, lastUpdate, results, logStrategyResults, addLogEntry]);
 
   // Save session on changes
   useEffect(() => {
@@ -39,24 +63,22 @@ const Index = () => {
         virtualBalance,
         lastUpdate: new Date().toISOString(),
         totalScanned: coins.length,
-        opportunities: coins.filter(
-          (c) => Math.abs(parseFloat(c.priceChangePercent)) > 5
-        ).length,
+        opportunities: results.totalBreakouts + results.totalRsiBounces,
       });
     }
-  }, [coins, virtualBalance]);
+  }, [coins, virtualBalance, results]);
 
   const opportunities = useMemo(() => {
-    return coins.filter((c) => Math.abs(parseFloat(c.priceChangePercent)) > 5).length;
-  }, [coins]);
+    return results.totalBreakouts + results.totalRsiBounces;
+  }, [results]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col" dir="rtl">
       <Header isConnected={!error && coins.length > 0} lastUpdate={lastUpdate} />
 
       <main className="flex-1 container py-4 px-4">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[calc(100vh-7rem)]">
-          {/* Left Panel - Event Log */}
+          {/* Right Panel - Event Log (RTL: appears on right) */}
           <div className="lg:col-span-3 h-full min-h-[300px]">
             <EventLog logs={logs} onClear={clearAllLogs} />
           </div>
@@ -66,13 +88,15 @@ const Index = () => {
             <MarketGrid coins={coins} loading={loading} onRefresh={refetch} />
           </div>
 
-          {/* Right Panel - Diagnostic Bundle */}
+          {/* Left Panel - Diagnostic Bundle (RTL: appears on left) */}
           <div className="lg:col-span-3 h-full min-h-[300px]">
             <DiagnosticBundle
               totalScanned={coins.length}
               opportunities={opportunities}
               virtualBalance={virtualBalance}
               lastUpdate={lastUpdate}
+              breakoutCount={results.totalBreakouts}
+              rsiBounceCount={results.totalRsiBounces}
             />
           </div>
         </div>

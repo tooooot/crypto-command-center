@@ -1,40 +1,48 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { FileJson, Copy, Check, Activity } from 'lucide-react';
+import { FileJson, Copy, Check } from 'lucide-react';
 
 interface DiagnosticBundleProps {
   totalScanned: number;
   opportunities: number;
   virtualBalance: number;
   lastUpdate: Date | null;
+  breakoutCount: number;
+  rsiBounceCount: number;
 }
 
-const VERSION = 'v1.0.0';
+const VERSION = 'v1.1.0-AR';
 
 export const DiagnosticBundle = ({
   totalScanned,
   opportunities,
   virtualBalance,
   lastUpdate,
+  breakoutCount,
+  rsiBounceCount,
 }: DiagnosticBundleProps) => {
   const [copied, setCopied] = useState(false);
 
   const diagnosticData = {
-    version: VERSION,
-    timestamp: lastUpdate?.toISOString() || new Date().toISOString(),
-    system: {
-      status: 'OPERATIONAL',
-      uptime: `${Math.floor((Date.now() - (lastUpdate?.getTime() || Date.now())) / 1000)}s`,
+    الإصدار: VERSION,
+    الطابع_الزمني: lastUpdate?.toISOString() || new Date().toISOString(),
+    النظام: {
+      الحالة: 'يعمل بنجاح',
+      مدة_التشغيل: `${Math.floor((Date.now() - (lastUpdate?.getTime() || Date.now())) / 1000)} ثانية`,
     },
-    metrics: {
-      totalAssetsScanned: totalScanned,
-      activeOpportunities: opportunities,
-      virtualBalance: `${virtualBalance.toFixed(2)} USDT`,
+    المقاييس: {
+      إجمالي_العملات_المفحوصة: totalScanned,
+      الفرص_المكتشفة: {
+        استراتيجية_10_اختراق: breakoutCount,
+        استراتيجية_65_ارتداد_RSI: rsiBounceCount,
+        الإجمالي: opportunities,
+      },
+      الرصيد_الافتراضي: `${virtualBalance.toFixed(2)} USDT`,
     },
-    engine: {
-      dataSource: 'Binance Public API',
-      refreshRate: '30s',
-      targetAssets: 100,
+    المحرك: {
+      مصدر_البيانات: 'Binance Public API',
+      معدل_التحديث: '30 ثانية',
+      الأصول_المستهدفة: 100,
     },
   };
 
@@ -49,7 +57,7 @@ export const DiagnosticBundle = ({
       <div className="flex items-center justify-between p-3 border-b border-border">
         <div className="flex items-center gap-2">
           <FileJson className="w-4 h-4 text-terminal-amber" />
-          <span className="text-sm font-medium text-terminal-amber">DIAGNOSTIC_BUNDLE</span>
+          <span className="text-sm font-medium text-terminal-amber">حزمة_التشخيص</span>
         </div>
         <Button
           variant="ghost"
@@ -62,7 +70,7 @@ export const DiagnosticBundle = ({
       </div>
 
       <div className="flex-1 p-3 overflow-auto">
-        <pre className="text-xs font-mono text-secondary-foreground whitespace-pre-wrap">
+        <pre className="text-xs font-mono text-secondary-foreground whitespace-pre-wrap" dir="ltr">
           <code>{JSON.stringify(diagnosticData, null, 2)}</code>
         </pre>
       </div>
@@ -70,23 +78,33 @@ export const DiagnosticBundle = ({
       <div className="p-3 border-t border-border">
         <div className="grid grid-cols-2 gap-3">
           <StatusCard
-            label="SCANNED"
+            label="المفحوصة"
             value={totalScanned.toString()}
             status="success"
           />
           <StatusCard
-            label="OPPORTUNITIES"
+            label="الفرص"
             value={opportunities.toString()}
             status={opportunities > 0 ? 'warning' : 'muted'}
           />
           <StatusCard
-            label="BALANCE"
+            label="اختراق (10)"
+            value={breakoutCount.toString()}
+            status={breakoutCount > 0 ? 'warning' : 'muted'}
+          />
+          <StatusCard
+            label="ارتداد RSI (65)"
+            value={rsiBounceCount.toString()}
+            status={rsiBounceCount > 0 ? 'warning' : 'muted'}
+          />
+          <StatusCard
+            label="الرصيد"
             value={`${virtualBalance.toFixed(2)}`}
             suffix="USDT"
             status="success"
           />
           <StatusCard
-            label="VERSION"
+            label="الإصدار"
             value={VERSION}
             status="muted"
           />
@@ -110,12 +128,6 @@ const StatusCard = ({ label, value, suffix, status }: StatusCardProps) => {
     muted: 'text-muted-foreground',
   }[status];
 
-  const glowClass = {
-    success: 'glow-green',
-    warning: 'glow-amber',
-    muted: '',
-  }[status];
-
   return (
     <div className="bg-secondary/50 rounded px-3 py-2">
       <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
@@ -123,7 +135,7 @@ const StatusCard = ({ label, value, suffix, status }: StatusCardProps) => {
       </div>
       <div className={`text-sm font-semibold ${colorClass}`}>
         <span className={status !== 'muted' ? 'text-glow-green' : ''}>{value}</span>
-        {suffix && <span className="text-muted-foreground ml-1 text-xs">{suffix}</span>}
+        {suffix && <span className="text-muted-foreground ms-1 text-xs">{suffix}</span>}
       </div>
     </div>
   );

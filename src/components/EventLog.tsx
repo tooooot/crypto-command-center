@@ -25,13 +25,13 @@ const getLogColor = (type: LogEntry['type']) => {
 const getLogPrefix = (type: LogEntry['type']) => {
   switch (type) {
     case 'success':
-      return '[OK]';
+      return '[تم]';
     case 'warning':
-      return '[WARN]';
+      return '[تنبيه]';
     case 'error':
-      return '[ERR]';
+      return '[خطأ]';
     default:
-      return '[LOG]';
+      return '[معلومة]';
   }
 };
 
@@ -49,8 +49,8 @@ export const EventLog = ({ logs, onClear }: EventLogProps) => {
       <div className="flex items-center justify-between p-3 border-b border-border">
         <div className="flex items-center gap-2">
           <Terminal className="w-4 h-4 text-terminal-green" />
-          <span className="text-sm font-medium text-terminal-green">EVENT_LOG</span>
-          <span className="text-xs text-muted-foreground">({logs.length} entries)</span>
+          <span className="text-sm font-medium text-terminal-green">سجل_العمليات</span>
+          <span className="text-xs text-muted-foreground">({logs.length} سجل)</span>
         </div>
         <Button
           variant="ghost"
@@ -66,7 +66,7 @@ export const EventLog = ({ logs, onClear }: EventLogProps) => {
         <div className="space-y-1 font-mono text-xs">
           {logs.length === 0 ? (
             <div className="text-muted-foreground animate-pulse">
-              Awaiting system events...
+              في انتظار أحداث النظام...
             </div>
           ) : (
             logs.map((log, index) => (
