@@ -11,8 +11,9 @@ export interface CoinData {
   lowPrice: string;
 }
 
-// Use proxy URL if available, fallback to direct Binance API
-const BINANCE_API_URL = 'https://api.binance.com/api/v3/ticker/24hr';
+// Binance Testnet API for testing
+const BINANCE_API_URL = 'https://testnet.binance.vision/api/v3/ticker/24hr';
+const IS_TESTNET = true;
 
 export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void) => {
   const [coins, setCoins] = useState<CoinData[]>([]);
@@ -22,7 +23,7 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
 
   const fetchData = useCallback(async () => {
     try {
-      addLogEntry('جاري الاتصال بـ Binance API...', 'info');
+      addLogEntry(`جاري الاتصال بـ Binance ${IS_TESTNET ? 'Testnet' : 'API'}...`, 'info');
       
       const response = await fetch(BINANCE_API_URL);
       

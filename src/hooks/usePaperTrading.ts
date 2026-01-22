@@ -46,8 +46,9 @@ export interface PerformanceStats {
 const TRADE_AMOUNT = 10; // USDT per trade
 const TRAILING_STOP_PERCENT = 1; // 1% trailing stop
 const FEE_PERCENT = 0.1; // 0.1% fee per transaction
-const MIN_BALANCE_FOR_TRADE = 10; // Minimum balance required to open a trade
+const MIN_BALANCE_FOR_TRADE = 1; // Reduced for Testnet (was 10)
 const MAX_OPEN_POSITIONS = 10; // Maximum concurrent positions
+const IS_TESTNET_MODE = true; // Testnet mode flag
 const PROFIT_LOCK_THRESHOLD = 3; // Lock profit when PnL > 3%
 const PROFIT_LOCK_LEVEL = 2; // Lock at 2% profit
 
@@ -85,10 +86,15 @@ export const usePaperTrading = (
     const existingPosition = positions.find(p => p.symbol === opportunity.symbol);
     if (existingPosition) return;
 
-    // Check if we have enough balance (minimum 10 USDT required)
+    // Check if we have enough balance (flexible for Testnet)
     if (virtualBalance < MIN_BALANCE_FOR_TRADE) {
-      addLogEntry(`[رفض_الصفقة] الرصيد غير كافٍ (${virtualBalance.toFixed(2)} USDT) - يجب أن يكون 10 USDT على الأقل`, 'error');
+      addLogEntry(`[رفض_الصفقة] الرصيد غير كافٍ (${virtualBalance.toFixed(2)} USDT) - يجب أن يكون ${MIN_BALANCE_FOR_TRADE} USDT على الأقل`, 'error');
       return;
+    }
+    
+    // Testnet mode: auto-approve trades
+    if (IS_TESTNET_MODE) {
+      addLogEntry(`[TESTNET] صفقة معتمدة تلقائياً للتداول التجريبي`, 'info');
     }
 
     const fee = TRADE_AMOUNT * (FEE_PERCENT / 100);
