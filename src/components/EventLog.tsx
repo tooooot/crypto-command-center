@@ -58,6 +58,36 @@ export const EventLog = ({ logs, onClear, diagnosticData }: EventLogProps) => {
     }
   }, [logs]);
 
+  const copyToClipboard = async (text: string): Promise<boolean> => {
+    // Try modern Navigator Clipboard API first
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (err) {
+        console.warn('Navigator clipboard failed, trying fallback:', err);
+      }
+    }
+    
+    // Fallback: Create a temporary textarea element
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const success = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return success;
+    } catch (err) {
+      console.error('Clipboard fallback also failed:', err);
+      return false;
+    }
+  };
+
   const handleCopy = async () => {
     const VERSION = 'v1.5.1-AR';
     const logsText = logs.map(log => `[${log.timestamp}] ${getLogPrefix(log.type)} ${log.message}`).join('\n');
@@ -84,9 +114,11 @@ export const EventLog = ({ logs, onClear, diagnosticData }: EventLogProps) => {
 
     const fullReport = `=== سجل العمليات ===\n${logsText}\n\n=== حزمة التشخيص ===\n${JSON.stringify(diagnosticBundle, null, 2)}`;
     
-    await navigator.clipboard.writeText(fullReport);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const success = await copyToClipboard(fullReport);
+    if (success) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   return (
