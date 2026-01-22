@@ -9,9 +9,13 @@ interface DiagnosticBundleProps {
   lastUpdate: Date | null;
   breakoutCount: number;
   rsiBounceCount: number;
+  openPositions: number;
+  totalTrades: number;
+  winRate: number;
+  totalPnL: number;
 }
 
-const VERSION = 'v1.1.0-AR';
+const VERSION = 'v1.2.0-AR';
 
 export const DiagnosticBundle = ({
   totalScanned,
@@ -20,6 +24,10 @@ export const DiagnosticBundle = ({
   lastUpdate,
   breakoutCount,
   rsiBounceCount,
+  openPositions,
+  totalTrades,
+  winRate,
+  totalPnL,
 }: DiagnosticBundleProps) => {
   const [copied, setCopied] = useState(false);
 
@@ -38,6 +46,14 @@ export const DiagnosticBundle = ({
         الإجمالي: opportunities,
       },
       الرصيد_الافتراضي: `${virtualBalance.toFixed(2)} USDT`,
+    },
+    التداول: {
+      الصفقات_المفتوحة: openPositions,
+      إجمالي_الصفقات: totalTrades,
+      نسبة_النجاح: `${winRate.toFixed(1)}%`,
+      الربح_الصافي: `${totalPnL >= 0 ? '+' : ''}$${totalPnL.toFixed(2)}`,
+      العمولة: '0.1%',
+      الوقف_الزاحف: '1%',
     },
     المحرك: {
       مصدر_البيانات: 'Binance Public API',
