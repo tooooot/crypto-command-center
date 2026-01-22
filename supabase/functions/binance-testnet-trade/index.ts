@@ -37,24 +37,18 @@ async function getAccountBalance(): Promise<any> {
 async function placeOrder(
   symbol: string,
   side: 'BUY' | 'SELL',
-  quantity: number,
-  price?: number
+  quantity: number
 ): Promise<any> {
   const timestamp = Date.now();
   
-  // Build query params
+  // Build query params - Always use MARKET orders for instant execution
   const params: Record<string, string> = {
     symbol: symbol,
     side: side,
-    type: price ? 'LIMIT' : 'MARKET',
+    type: 'MARKET',
     quantity: quantity.toString(),
     timestamp: timestamp.toString(),
   };
-  
-  if (price) {
-    params.timeInForce = 'GTC';
-    params.price = price.toString();
-  }
   
   const queryString = Object.entries(params)
     .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
@@ -157,7 +151,7 @@ Deno.serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
-        result = await placeOrder(symbol, side, parseFloat(quantity), price ? parseFloat(price) : undefined);
+        result = await placeOrder(symbol, side, parseFloat(quantity));
         break;
       
       case 'cancel':
