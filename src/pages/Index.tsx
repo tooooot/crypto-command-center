@@ -102,7 +102,21 @@ const Index = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Right Panel - Event Log (RTL: appears on right) */}
           <div className="lg:col-span-3 space-y-4">
-            <EventLog logs={logs} onClear={clearAllLogs} />
+            <EventLog 
+              logs={logs} 
+              onClear={clearAllLogs} 
+              diagnosticData={{
+                virtualBalance,
+                openPositionsValue,
+                totalPortfolioValue,
+                totalScanned: coins.length,
+                opportunities,
+                openPositions: openPositionsCount,
+                totalTrades: performanceStats.totalTrades,
+                winRate: performanceStats.winRate,
+                totalPnL: performanceStats.totalPnL,
+              }}
+            />
           </div>
 
           {/* Center Panel - Market Grid + Open Positions */}
