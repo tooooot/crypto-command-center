@@ -1,12 +1,25 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Trash2, Terminal } from 'lucide-react';
+import { Trash2, Terminal, Copy, Check } from 'lucide-react';
 import { LogEntry } from '@/lib/indexedDB';
+
+interface DiagnosticData {
+  virtualBalance: number;
+  openPositionsValue: number;
+  totalPortfolioValue: number;
+  totalScanned: number;
+  opportunities: number;
+  openPositions: number;
+  totalTrades: number;
+  winRate: number;
+  totalPnL: number;
+}
 
 interface EventLogProps {
   logs: LogEntry[];
   onClear: () => void;
+  diagnosticData?: DiagnosticData;
 }
 
 const getLogColor = (type: LogEntry['type']) => {
@@ -35,14 +48,46 @@ const getLogPrefix = (type: LogEntry['type']) => {
   }
 };
 
-export const EventLog = ({ logs, onClear }: EventLogProps) => {
+export const EventLog = ({ logs, onClear, diagnosticData }: EventLogProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [logs]);
+
+  const handleCopy = async () => {
+    const VERSION = 'v1.3.0-AR';
+    const logsText = logs.map(log => `[${log.timestamp}] ${getLogPrefix(log.type)} ${log.message}`).join('\n');
+    
+    const diagnosticBundle = diagnosticData ? {
+      الإصدار: VERSION,
+      الطابع_الزمني: new Date().toISOString(),
+      المحفظة: {
+        السيولة_المتاحة: `${diagnosticData.virtualBalance.toFixed(2)} USDT`,
+        قيمة_العملات: `${diagnosticData.openPositionsValue.toFixed(2)} USDT`,
+        القيمة_الإجمالية: `${diagnosticData.totalPortfolioValue.toFixed(2)} USDT`,
+      },
+      التداول: {
+        الصفقات_المفتوحة: `${diagnosticData.openPositions}/10`,
+        إجمالي_الصفقات: diagnosticData.totalTrades,
+        نسبة_النجاح: `${diagnosticData.winRate.toFixed(1)}%`,
+        الربح_الصافي: `${diagnosticData.totalPnL >= 0 ? '+' : ''}$${diagnosticData.totalPnL.toFixed(2)}`,
+      },
+      المقاييس: {
+        إجمالي_العملات_المفحوصة: diagnosticData.totalScanned,
+        الفرص_المكتشفة: diagnosticData.opportunities,
+      },
+    } : null;
+
+    const fullReport = `=== سجل العمليات ===\n${logsText}\n\n=== حزمة التشخيص ===\n${JSON.stringify(diagnosticBundle, null, 2)}`;
+    
+    await navigator.clipboard.writeText(fullReport);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className="terminal-card h-full flex flex-col">
@@ -52,14 +97,25 @@ export const EventLog = ({ logs, onClear }: EventLogProps) => {
           <span className="text-sm font-medium text-terminal-green">سجل_العمليات</span>
           <span className="text-xs text-muted-foreground">({logs.length} سجل)</span>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onClear}
-          className="h-7 px-2 text-muted-foreground hover:text-terminal-red hover:bg-terminal-red/10"
-        >
-          <Trash2 className="w-3 h-3" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCopy}
+            className="h-7 px-2 text-muted-foreground hover:text-terminal-green hover:bg-terminal-green/10"
+            title="نسخ السجل مع التشخيص"
+          >
+            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClear}
+            className="h-7 px-2 text-muted-foreground hover:text-terminal-red hover:bg-terminal-red/10"
+          >
+            <Trash2 className="w-3 h-3" />
+          </Button>
+        </div>
       </div>
       
       <ScrollArea className="flex-1 p-3" ref={scrollRef}>
