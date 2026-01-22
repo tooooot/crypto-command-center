@@ -11,6 +11,7 @@ import { useBinanceData } from '@/hooks/useBinanceData';
 import { useStrategies } from '@/hooks/useStrategies';
 import { useOpportunityRanker } from '@/hooks/useOpportunityRanker';
 import { usePaperTrading } from '@/hooks/usePaperTrading';
+import { useServerConnection } from '@/hooks/useServerConnection';
 import { saveSession, getSession, initDB, fullSystemReset, clearLogs } from '@/lib/indexedDB';
 
 const FALLBACK_BALANCE = 100;
@@ -48,6 +49,10 @@ const Index = () => {
     openPositionsValue,
     totalPortfolioValue,
   } = usePaperTrading(virtualBalance, setVirtualBalance, coins, addLogEntry, isManualConfirmMode);
+  
+  // Server connection hook
+  const { isConnected: serverConnected, isChecking: isCheckingServer, verifyConnection } = useServerConnection(addLogEntry);
+  
   const lastLoggedUpdate = useRef<string | null>(null);
 
   // Fetch real balance from Binance Mainnet API
@@ -214,6 +219,9 @@ const Index = () => {
         isPaused={isPaused}
         onTogglePause={handleTogglePause}
         onSystemReset={handleSystemReset}
+        onVerifyServer={verifyConnection}
+        isCheckingServer={isCheckingServer}
+        serverConnected={serverConnected}
         positions={positions}
       />
 

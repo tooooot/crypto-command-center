@@ -11,17 +11,57 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { RotateCcw, Pause, Play, AlertTriangle } from 'lucide-react';
+import { RotateCcw, Pause, Play, AlertTriangle, Server, Loader2 } from 'lucide-react';
 
 interface ControlPanelProps {
   isPaused: boolean;
   onTogglePause: () => void;
   onSystemReset: () => void;
+  onVerifyServer?: () => Promise<unknown>;
+  isCheckingServer?: boolean;
+  serverConnected?: boolean | null;
 }
 
-export const ControlPanel = ({ isPaused, onTogglePause, onSystemReset }: ControlPanelProps) => {
+export const ControlPanel = ({ 
+  isPaused, 
+  onTogglePause, 
+  onSystemReset,
+  onVerifyServer,
+  isCheckingServer,
+  serverConnected,
+}: ControlPanelProps) => {
   return (
     <div className="flex items-center gap-2">
+      {/* Server Connection Check Button */}
+      {onVerifyServer && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onVerifyServer}
+          disabled={isCheckingServer}
+          className={`h-8 px-3 border-border ${
+            serverConnected === true
+              ? 'text-terminal-green border-terminal-green/50'
+              : serverConnected === false
+              ? 'text-terminal-red border-terminal-red/50'
+              : 'text-terminal-cyan border-terminal-cyan/50 hover:bg-terminal-cyan/10'
+          }`}
+        >
+          {isCheckingServer ? (
+            <>
+              <Loader2 className="w-3 h-3 me-1.5 animate-spin" />
+              <span className="text-xs">جاري...</span>
+            </>
+          ) : (
+            <>
+              <Server className="w-3 h-3 me-1.5" />
+              <span className="text-xs">
+                {serverConnected === true ? 'متصل' : serverConnected === false ? 'غير متصل' : 'فحص السيرفر'}
+              </span>
+            </>
+          )}
+        </Button>
+      )}
       {/* Pause/Resume Button */}
       <Button
         variant="outline"
