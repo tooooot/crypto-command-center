@@ -32,8 +32,7 @@ export interface ServerConnectionResult {
 }
 
 export const useServerConnection = (
-  addLogEntry: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void,
-  onBalanceUpdate?: (balance: number) => void
+  addLogEntry: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void
 ) => {
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [isChecking, setIsChecking] = useState(false);
@@ -77,11 +76,6 @@ export const useServerConnection = (
       setTradeHistory(data.trades || data || []);
       setRealBalance(serverBalance);
       
-      // Update parent component with real balance
-      if (onBalanceUpdate && serverBalance) {
-        onBalanceUpdate(serverBalance);
-      }
-      
       addLogEntry(
         `[PROXY] ✓ تم الاتصال بنجاح! | الوقت: ${latency}ms | الرصيد: ${serverBalance} USDT | سجل الصفقات: ${Array.isArray(data.trades) ? data.trades.length : Array.isArray(data) ? data.length : 0} صفقة`,
         'success'
@@ -115,7 +109,7 @@ export const useServerConnection = (
       setIsChecking(false);
       return { success: false, error: errorMessage, latency };
     }
-  }, [addLogEntry, onBalanceUpdate]);
+  }, [addLogEntry]);
 
   // Send trade request via proxy
   const sendTradeViaProxy = useCallback(async (tradeData: {
