@@ -15,7 +15,7 @@ interface DiagnosticBundleProps {
   totalPnL: number;
 }
 
-const VERSION = 'v1.2.0-AR';
+const VERSION = 'v1.2.1-AR';
 
 export const DiagnosticBundle = ({
   totalScanned,

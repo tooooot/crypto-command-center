@@ -1,15 +1,23 @@
 import { PerformanceStats as Stats } from '@/hooks/usePaperTrading';
-import { BarChart3, TrendingUp, TrendingDown, Target } from 'lucide-react';
+import { BarChart3, TrendingUp, TrendingDown, Target, Wallet, Briefcase } from 'lucide-react';
 
 interface PerformanceStatsProps {
   stats: Stats;
   virtualBalance: number;
   initialBalance: number;
+  openPositionsValue: number;
+  totalPortfolioValue: number;
 }
 
-export const PerformanceStats = ({ stats, virtualBalance, initialBalance }: PerformanceStatsProps) => {
-  const balanceChange = virtualBalance - initialBalance;
-  const balanceChangePercent = ((virtualBalance - initialBalance) / initialBalance) * 100;
+export const PerformanceStats = ({ 
+  stats, 
+  virtualBalance, 
+  initialBalance, 
+  openPositionsValue,
+  totalPortfolioValue 
+}: PerformanceStatsProps) => {
+  const balanceChange = totalPortfolioValue - initialBalance;
+  const balanceChangePercent = ((totalPortfolioValue - initialBalance) / initialBalance) * 100;
   const isBalancePositive = balanceChange >= 0;
 
   return (
@@ -20,18 +28,37 @@ export const PerformanceStats = ({ stats, virtualBalance, initialBalance }: Perf
       </div>
 
       <div className="flex-1 p-3 space-y-3">
-        {/* Balance Overview */}
+        {/* Portfolio Overview */}
         <div className="bg-secondary/50 rounded-lg p-3">
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">
-            الرصيد الحالي
+          <div className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1">
+            <Briefcase className="w-3 h-3" />
+            <span>القيمة الإجمالية للمحفظة</span>
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-xl font-bold text-foreground">
-              ${virtualBalance.toFixed(2)}
+              ${totalPortfolioValue.toFixed(2)}
             </span>
             <span className={`text-sm ${isBalancePositive ? 'text-terminal-green' : 'text-terminal-red'}`}>
               {isBalancePositive ? '+' : ''}{balanceChangePercent.toFixed(2)}%
             </span>
+          </div>
+        </div>
+
+        {/* Available Balance & Positions Value */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-secondary/50 rounded px-2 py-2">
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1">
+              <Wallet className="w-3 h-3" />
+              <span>الرصيد المتاح</span>
+            </div>
+            <div className="text-sm font-semibold text-terminal-green">${virtualBalance.toFixed(2)}</div>
+          </div>
+          <div className="bg-secondary/50 rounded px-2 py-2">
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1">
+              <TrendingUp className="w-3 h-3" />
+              <span>في الصفقات</span>
+            </div>
+            <div className="text-sm font-semibold text-terminal-amber">${openPositionsValue.toFixed(2)}</div>
           </div>
         </div>
 
