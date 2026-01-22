@@ -58,6 +58,29 @@ const Index = () => {
     });
   }, [addLogEntry]);
 
+  // Test Binance Testnet connection on startup
+  const testTestnetConnection = useCallback(async () => {
+    try {
+      const response = await fetch('https://lpwhiqtclpiuozxdaipc.supabase.co/functions/v1/binance-testnet-trade', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxwd2hpcXRjbHBpdW96eGRhaXBjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwOTgyODQsImV4cCI6MjA4NDY3NDI4NH0.qV4dfR1ccUQokIflxyfQpkmfs_R4p5HOUWrCdHitAPs',
+        },
+        body: JSON.stringify({ action: 'test' }),
+      });
+      const result = await response.json();
+      
+      if (result.success) {
+        addLogEntry('[TESTNET] ✓ تم الربط مع تطبيق بينانس (Mock Trading)', 'success');
+      } else {
+        addLogEntry(`[TESTNET] ⚠ فشل اختبار الاتصال: ${result.error || 'Unknown'}`, 'warning');
+      }
+    } catch (error: any) {
+      addLogEntry(`[TESTNET] ✗ خطأ في الاتصال: ${error.message}`, 'error');
+    }
+  }, [addLogEntry]);
+
   // Initialize IndexedDB and load session
   useEffect(() => {
     const init = async () => {
@@ -71,9 +94,12 @@ const Index = () => {
       } else {
         addLogEntry(`تم إنشاء جلسة جديدة. الرصيد الافتراضي: ${INITIAL_BALANCE} USDT`, 'info');
       }
+      
+      // Test Binance Testnet connection after initialization
+      await testTestnetConnection();
     };
     init();
-  }, []);
+  }, [testTestnetConnection]);
 
   // Log strategy results and process opportunities when coins update
   useEffect(() => {

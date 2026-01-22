@@ -1,0 +1,4 @@
+project_id = "lpwhiqtclpiuozxdaipc"
+
+[functions.binance-testnet-trade]
+verify_jwt = false

@@ -66,7 +66,8 @@ export const DiagnosticBundle = ({
     },
     المحرك: {
       مصدر_البيانات: 'Binance Testnet API',
-      البيئة: 'Testnet (تجريبي)',
+      البيئة: 'Testnet (Mock Trading)',
+      حالة_الربط: 'متصل ✓',
       معدل_التحديث: '30 ثانية',
       الأصول_المستهدفة: 100,
     },
