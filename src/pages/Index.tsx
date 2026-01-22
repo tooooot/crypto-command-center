@@ -3,9 +3,12 @@ import { Header } from '@/components/Header';
 import { EventLog } from '@/components/EventLog';
 import { DiagnosticBundle } from '@/components/DiagnosticBundle';
 import { MarketGrid } from '@/components/MarketGrid';
+import { OpenPositions } from '@/components/OpenPositions';
+import { PerformanceStats } from '@/components/PerformanceStats';
 import { useEventLog } from '@/hooks/useEventLog';
 import { useBinanceData } from '@/hooks/useBinanceData';
 import { useStrategies } from '@/hooks/useStrategies';
+import { usePaperTrading } from '@/hooks/usePaperTrading';
 import { saveSession, getSession, initDB } from '@/lib/indexedDB';
 
 const INITIAL_BALANCE = 100;
@@ -15,6 +18,13 @@ const Index = () => {
   const { logs, addLogEntry, clearAllLogs } = useEventLog();
   const { coins, loading, error, lastUpdate, refetch } = useBinanceData(addLogEntry);
   const { results, logStrategyResults } = useStrategies(coins, addLogEntry);
+  const {
+    positions,
+    performanceStats,
+    processOpportunities,
+    manualClosePosition,
+    openPositionsCount,
+  } = usePaperTrading(virtualBalance, setVirtualBalance, coins, addLogEntry);
   const lastLoggedUpdate = useRef<string | null>(null);
 
   // Initialize IndexedDB and load session
@@ -34,7 +44,7 @@ const Index = () => {
     init();
   }, []);
 
-  // Log strategy results when coins update
+  // Log strategy results and process opportunities when coins update
   useEffect(() => {
     if (coins.length > 0 && lastUpdate) {
       const updateKey = lastUpdate.toISOString();
@@ -45,6 +55,10 @@ const Index = () => {
         
         if (results.totalBreakouts > 0 || results.totalRsiBounces > 0) {
           logStrategyResults(results);
+          
+          // Process opportunities for paper trading
+          const allOpportunities = [...results.breakouts, ...results.rsiBounces];
+          processOpportunities(allOpportunities);
         }
         
         addLogEntry(
@@ -53,7 +67,7 @@ const Index = () => {
         );
       }
     }
-  }, [coins, lastUpdate, results, logStrategyResults, addLogEntry]);
+  }, [coins, lastUpdate, results, logStrategyResults, addLogEntry, processOpportunities]);
 
   // Save session on changes
   useEffect(() => {
@@ -77,19 +91,31 @@ const Index = () => {
       <Header isConnected={!error && coins.length > 0} lastUpdate={lastUpdate} />
 
       <main className="flex-1 container py-4 px-4">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 h-[calc(100vh-7rem)]">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Right Panel - Event Log (RTL: appears on right) */}
-          <div className="lg:col-span-3 h-full min-h-[300px]">
+          <div className="lg:col-span-3 space-y-4">
             <EventLog logs={logs} onClear={clearAllLogs} />
           </div>
 
-          {/* Center Panel - Market Grid */}
-          <div className="lg:col-span-6 h-full min-h-[400px]">
-            <MarketGrid coins={coins} loading={loading} onRefresh={refetch} />
+          {/* Center Panel - Market Grid + Open Positions */}
+          <div className="lg:col-span-6 space-y-4">
+            <div className="h-[400px]">
+              <MarketGrid coins={coins} loading={loading} onRefresh={refetch} />
+            </div>
+            <div className="h-[250px]">
+              <OpenPositions positions={positions} onClosePosition={manualClosePosition} />
+            </div>
           </div>
 
-          {/* Left Panel - Diagnostic Bundle (RTL: appears on left) */}
-          <div className="lg:col-span-3 h-full min-h-[300px]">
+          {/* Left Panel - Performance Stats & Diagnostic Bundle (RTL: appears on left) */}
+          <div className="lg:col-span-3 space-y-4">
+            <div className="h-[300px]">
+              <PerformanceStats
+                stats={performanceStats}
+                virtualBalance={virtualBalance}
+                initialBalance={INITIAL_BALANCE}
+              />
+            </div>
             <DiagnosticBundle
               totalScanned={coins.length}
               opportunities={opportunities}
@@ -97,6 +123,10 @@ const Index = () => {
               lastUpdate={lastUpdate}
               breakoutCount={results.totalBreakouts}
               rsiBounceCount={results.totalRsiBounces}
+              openPositions={openPositionsCount}
+              totalTrades={performanceStats.totalTrades}
+              winRate={performanceStats.winRate}
+              totalPnL={performanceStats.totalPnL}
             />
           </div>
         </div>
