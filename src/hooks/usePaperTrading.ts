@@ -53,6 +53,7 @@ export interface PerformanceStats {
 const TRADE_AMOUNT = 10; // 10 USDT minimum per trade
 const TRAILING_STOP_PERCENT = 1; // 1% trailing stop
 const FEE_PERCENT = 0.1; // 0.1% fee per transaction
+const RESERVED_BALANCE = 12; // Reserve 12 USDT from total balance
 const MIN_BALANCE_FOR_TRADE = 10; // Minimum 10 USDT
 const MAX_OPEN_POSITIONS = 10; // Maximum concurrent positions
 const PROFIT_LOCK_THRESHOLD = 3; // Lock profit when PnL > 3%
@@ -145,9 +146,10 @@ export const usePaperTrading = (
     const existingPosition = positions.find(p => p.symbol === opportunity.symbol);
     if (existingPosition) return;
 
-    // Check balance
-    if (virtualBalance < MIN_BALANCE_FOR_TRADE) {
-      addLogEntry(`[رفض_الصفقة] الرصيد غير كافٍ (${virtualBalance.toFixed(2)} USDT) - يجب أن يكون ${MIN_BALANCE_FOR_TRADE} USDT على الأقل`, 'error');
+    // Check balance (with 12 USDT reserved)
+    const availableBalance = virtualBalance - RESERVED_BALANCE;
+    if (availableBalance < MIN_BALANCE_FOR_TRADE) {
+      addLogEntry(`[رفض_الصفقة] الرصيد المتاح غير كافٍ (${availableBalance.toFixed(2)} USDT) - يجب أن يكون ${MIN_BALANCE_FOR_TRADE} USDT على الأقل (محجوز: ${RESERVED_BALANCE} USDT)`, 'error');
       return;
     }
 

@@ -9,6 +9,7 @@ import { PendingTrades } from '@/components/PendingTrades';
 import { useEventLog } from '@/hooks/useEventLog';
 import { useBinanceData } from '@/hooks/useBinanceData';
 import { useStrategies } from '@/hooks/useStrategies';
+import { useOpportunityRanker } from '@/hooks/useOpportunityRanker';
 import { usePaperTrading } from '@/hooks/usePaperTrading';
 import { saveSession, getSession, initDB, fullSystemReset, clearLogs } from '@/lib/indexedDB';
 
@@ -22,6 +23,18 @@ const Index = () => {
   const { logs, addLogEntry, clearAllLogs, reloadLogs } = useEventLog();
   const { coins, loading, error, lastUpdate, refetch, markSymbolInvalid } = useBinanceData(addLogEntry);
   const { results, logStrategyResults } = useStrategies(coins, addLogEntry);
+  
+  // Combine all opportunities for ranking
+  const allOpportunities = useMemo(() => {
+    return [...results.breakouts, ...results.rsiBounces];
+  }, [results]);
+  
+  // Use the opportunity ranker
+  const { rankedOpportunities, goldenOpportunity, logGoldenOpportunity, totalOpportunities: rankedTotal } = useOpportunityRanker(
+    allOpportunities,
+    coins,
+    addLogEntry
+  );
   const {
     positions,
     performanceStats,
@@ -150,20 +163,24 @@ const Index = () => {
         if (results.totalBreakouts > 0 || results.totalRsiBounces > 0) {
           logStrategyResults(results);
           
-          // Process opportunities (only if not paused)
+          // Log the golden opportunity if found
+          if (goldenOpportunity) {
+            logGoldenOpportunity();
+          }
+          
+          // Process opportunities (only if not paused) - use ranked opportunities
           if (!isPaused) {
-            const allOpportunities = [...results.breakouts, ...results.rsiBounces];
             processOpportunities(allOpportunities);
           }
         }
         
         addLogEntry(
-          `[نتائج_الفحص] استراتيجية 10: ${results.totalBreakouts} | استراتيجية 65: ${results.totalRsiBounces}${isPaused ? ' [متوقف]' : ''}`,
+          `[نتائج_الفحص] استراتيجية 10: ${results.totalBreakouts} | استراتيجية 65: ${results.totalRsiBounces}${goldenOpportunity ? ` | 🏆 ${goldenOpportunity.symbol}` : ''}${isPaused ? ' [متوقف]' : ''}`,
           results.totalBreakouts > 0 || results.totalRsiBounces > 0 ? 'warning' : 'info'
         );
       }
     }
-  }, [coins, lastUpdate, results, logStrategyResults, addLogEntry, processOpportunities, isPaused]);
+  }, [coins, lastUpdate, results, logStrategyResults, addLogEntry, processOpportunities, isPaused, goldenOpportunity, logGoldenOpportunity, allOpportunities]);
 
   // Save session on changes
   useEffect(() => {
@@ -206,6 +223,7 @@ const Index = () => {
           <div className="mb-4">
             <PendingTrades
               pendingOpportunities={pendingOpportunities}
+              rankedOpportunities={rankedOpportunities}
               onConfirm={confirmPendingOpportunity}
               onDismiss={dismissPendingOpportunity}
             />
