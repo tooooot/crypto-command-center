@@ -23,11 +23,17 @@ const Index = () => {
     performanceStats,
     processOpportunities,
     manualClosePosition,
+    hardReset,
     openPositionsCount,
     openPositionsValue,
     totalPortfolioValue,
   } = usePaperTrading(virtualBalance, setVirtualBalance, coins, addLogEntry);
   const lastLoggedUpdate = useRef<string | null>(null);
+
+  // Handle hard reset
+  const handleHardReset = () => {
+    hardReset(INITIAL_BALANCE);
+  };
 
   // Initialize IndexedDB and load session
   useEffect(() => {
@@ -105,7 +111,11 @@ const Index = () => {
               <MarketGrid coins={coins} loading={loading} onRefresh={refetch} />
             </div>
             <div className="h-[250px]">
-              <OpenPositions positions={positions} onClosePosition={manualClosePosition} />
+              <OpenPositions 
+                positions={positions} 
+                onClosePosition={manualClosePosition}
+                onHardReset={handleHardReset}
+              />
             </div>
           </div>
 
@@ -131,6 +141,8 @@ const Index = () => {
               totalTrades={performanceStats.totalTrades}
               winRate={performanceStats.winRate}
               totalPnL={performanceStats.totalPnL}
+              openPositionsValue={openPositionsValue}
+              totalPortfolioValue={totalPortfolioValue}
             />
           </div>
         </div>

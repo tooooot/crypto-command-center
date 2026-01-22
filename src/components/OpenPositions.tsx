@@ -1,28 +1,41 @@
 import { Position } from '@/hooks/usePaperTrading';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown, X } from 'lucide-react';
+import { TrendingUp, TrendingDown, X, RotateCcw } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface OpenPositionsProps {
   positions: Position[];
   onClosePosition: (positionId: string) => void;
+  onHardReset?: () => void;
 }
 
-export const OpenPositions = ({ positions, onClosePosition }: OpenPositionsProps) => {
+export const OpenPositions = ({ positions, onClosePosition, onHardReset }: OpenPositionsProps) => {
   return (
     <div className="terminal-card h-full flex flex-col">
       <div className="flex items-center justify-between p-3 border-b border-border">
         <div className="flex items-center gap-2">
           <TrendingUp className="w-4 h-4 text-terminal-green" />
           <span className="text-sm font-medium text-terminal-green">الصفقات_المفتوحة</span>
-          <span className="text-xs text-muted-foreground">({positions.length})</span>
+          <span className="text-xs text-muted-foreground">({positions.length}/10)</span>
         </div>
+        {onHardReset && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onHardReset}
+            className="h-7 px-2 text-muted-foreground hover:text-terminal-amber hover:bg-terminal-amber/10"
+            title="إعادة ضبط المحفظة"
+          >
+            <RotateCcw className="w-3 h-3 me-1" />
+            <span className="text-xs">ضبط</span>
+          </Button>
+        )}
       </div>
 
       <ScrollArea className="flex-1 p-2">
         {positions.length === 0 ? (
           <div className="text-center text-muted-foreground text-sm py-8">
-            لا توجد صفقات مفتوحة
+            لا توجد صفقات مفتوحة - في انتظار الفرص...
           </div>
         ) : (
           <div className="space-y-2">
@@ -79,14 +92,23 @@ const PositionCard = ({ position, onClose }: PositionCardProps) => {
           <span className="ms-1 text-foreground">${position.currentPrice.toFixed(6)}</span>
         </div>
         <div>
-          <span className="text-muted-foreground">الوقف الزاحف:</span>
+          <span className="text-muted-foreground">أعلى سعر:</span>
+          <span className="ms-1 text-terminal-green">${position.highestPrice.toFixed(6)}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">سعر الوقف:</span>
           <span className="ms-1 text-terminal-amber">${position.trailingStopPrice.toFixed(6)}</span>
         </div>
-        <div className="flex items-center gap-1">
-          <span className="text-muted-foreground">الربح اللحظي:</span>
-          <PnLIcon className={`w-3 h-3 ${pnlColorClass}`} />
-          <span className={pnlColorClass}>
-            {isProfit ? '+' : ''}{position.pnlPercent.toFixed(2)}%
+        <div className="col-span-2 flex items-center justify-between pt-1 border-t border-border/30">
+          <div className="flex items-center gap-1">
+            <span className="text-muted-foreground">الربح اللحظي:</span>
+            <PnLIcon className={`w-3 h-3 ${pnlColorClass}`} />
+            <span className={pnlColorClass}>
+              {isProfit ? '+' : ''}{position.pnlPercent.toFixed(2)}%
+            </span>
+          </div>
+          <span className={`font-semibold ${pnlColorClass}`}>
+            {isProfit ? '+' : ''}${position.pnlAmount.toFixed(4)}
           </span>
         </div>
       </div>
