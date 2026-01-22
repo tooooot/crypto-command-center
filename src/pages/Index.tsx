@@ -24,6 +24,8 @@ const Index = () => {
     processOpportunities,
     manualClosePosition,
     openPositionsCount,
+    openPositionsValue,
+    totalPortfolioValue,
   } = usePaperTrading(virtualBalance, setVirtualBalance, coins, addLogEntry);
   const lastLoggedUpdate = useRef<string | null>(null);
 
@@ -114,6 +116,8 @@ const Index = () => {
                 stats={performanceStats}
                 virtualBalance={virtualBalance}
                 initialBalance={INITIAL_BALANCE}
+                openPositionsValue={openPositionsValue}
+                totalPortfolioValue={totalPortfolioValue}
               />
             </div>
             <DiagnosticBundle

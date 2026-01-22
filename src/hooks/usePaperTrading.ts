@@ -45,6 +45,7 @@ export interface PerformanceStats {
 const TRADE_AMOUNT = 10; // USDT per trade
 const TRAILING_STOP_PERCENT = 1; // 1% trailing stop
 const FEE_PERCENT = 0.1; // 0.1% fee per transaction
+const MIN_BALANCE_FOR_TRADE = 10; // Minimum balance required to open a trade
 
 export const usePaperTrading = (
   virtualBalance: number,
@@ -55,6 +56,10 @@ export const usePaperTrading = (
   const [positions, setPositions] = useState<Position[]>([]);
   const [closedTrades, setClosedTrades] = useState<ClosedTrade[]>([]);
   const processedOpportunities = useRef<Set<string>>(new Set());
+
+  // Calculate total value of open positions
+  const openPositionsValue = positions.reduce((sum, pos) => sum + (pos.quantity * pos.currentPrice), 0);
+  const totalPortfolioValue = virtualBalance + openPositionsValue;
 
   // Calculate performance stats
   const performanceStats: PerformanceStats = {
@@ -72,17 +77,21 @@ export const usePaperTrading = (
 
   // Open a new position
   const openPosition = useCallback((opportunity: StrategyResult) => {
-    const opportunityKey = `${opportunity.symbol}-${opportunity.strategy}-${Date.now()}`;
-    
     // Check if we already have a position for this symbol
     const existingPosition = positions.find(p => p.symbol === opportunity.symbol);
     if (existingPosition) return;
 
-    // Check if we have enough balance
+    // Check if we have enough balance (minimum 10 USDT required)
+    if (virtualBalance < MIN_BALANCE_FOR_TRADE) {
+      addLogEntry(`[رفض_الصفقة] الرصيد غير كافٍ (${virtualBalance.toFixed(2)} USDT) - يجب أن يكون 10 USDT على الأقل`, 'error');
+      return;
+    }
+
     const fee = TRADE_AMOUNT * (FEE_PERCENT / 100);
-    const totalCost = TRADE_AMOUNT + fee;
+    const totalCost = TRADE_AMOUNT;
     
-    if (virtualBalance < totalCost) {
+    // Additional safety check - ensure balance won't go below 0
+    if (virtualBalance - totalCost < 0) {
       addLogEntry(`[رفض_الصفقة] الرصيد غير كافٍ لفتح صفقة ${opportunity.symbol}`, 'error');
       return;
     }
@@ -108,14 +117,12 @@ export const usePaperTrading = (
     };
 
     setPositions(prev => [...prev, newPosition]);
-    setVirtualBalance(prev => prev - TRADE_AMOUNT);
+    setVirtualBalance(prev => Math.max(0, prev - TRADE_AMOUNT)); // Ensure balance never goes below 0
 
     addLogEntry(
       `[شراء_افتراضي] العملة: ${opportunity.symbol} | السعر: $${entryPrice.toFixed(6)} | الكمية: ${quantity.toFixed(4)} | الاستراتيجية: ${opportunity.strategyName}`,
       'success'
     );
-
-    processedOpportunities.current.add(opportunityKey);
   }, [positions, virtualBalance, setVirtualBalance, addLogEntry]);
 
   // Close a position
@@ -175,9 +182,11 @@ export const usePaperTrading = (
         let newTrailingStopPrice = position.trailingStopPrice;
 
         // Update highest price and trailing stop if price made new high
+        let stopUpdated = false;
         if (currentPrice > position.highestPrice) {
           newHighestPrice = currentPrice;
           newTrailingStopPrice = currentPrice * (1 - TRAILING_STOP_PERCENT / 100);
+          stopUpdated = true;
         }
 
         // Check if trailing stop is hit
@@ -192,6 +201,16 @@ export const usePaperTrading = (
         const netValue = grossValue - exitFee;
         const pnlAmount = netValue - position.investedAmount;
         const pnlPercent = (pnlAmount / position.investedAmount) * 100;
+
+        // Log trailing stop update
+        if (stopUpdated) {
+          setTimeout(() => {
+            addLogEntry(
+              `[تحديث_الوقف] العملة: ${position.symbol} | الوقف الجديد: $${newTrailingStopPrice.toFixed(6)}`,
+              'info'
+            );
+          }, 0);
+        }
 
         updatedPositions.push({
           ...position,
@@ -250,5 +269,7 @@ export const usePaperTrading = (
     processOpportunities,
     manualClosePosition,
     openPositionsCount: positions.length,
+    openPositionsValue,
+    totalPortfolioValue,
   };
 };
