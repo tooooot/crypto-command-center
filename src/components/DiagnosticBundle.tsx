@@ -18,7 +18,7 @@ interface DiagnosticBundleProps {
   isPaused?: boolean;
 }
 
-const VERSION = 'v1.5.1-AR';
+const VERSION = 'v1.8.0-AR-TESTNET';
 
 export const DiagnosticBundle = ({
   totalScanned,
@@ -65,7 +65,8 @@ export const DiagnosticBundle = ({
       الوقف_الزاحف: '1%',
     },
     المحرك: {
-      مصدر_البيانات: 'Binance Public API',
+      مصدر_البيانات: 'Binance Testnet API',
+      البيئة: 'Testnet (تجريبي)',
       معدل_التحديث: '30 ثانية',
       الأصول_المستهدفة: 100,
     },
