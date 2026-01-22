@@ -3,13 +3,25 @@ import { useState, useCallback } from 'react';
 const SERVER_IP = "108.61.175.57";
 const SERVER_PORT = 3000;
 
-// Dynamic URL based on current hostname or fallback to known IP
+// Dynamic URL based on current hostname
 const getServerUrl = () => {
-  // If running on the server itself, use the same hostname
-  if (typeof window !== 'undefined' && window.location.hostname === SERVER_IP) {
-    return `http://${window.location.hostname}:${SERVER_PORT}`;
+  if (typeof window === 'undefined') {
+    return `http://${SERVER_IP}:${SERVER_PORT}`;
   }
-  // Fallback to known server IP
+  
+  const hostname = window.location.hostname;
+  
+  // Local development - use localhost
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return `http://localhost:${SERVER_PORT}`;
+  }
+  
+  // Running on Vultr server itself
+  if (hostname === SERVER_IP) {
+    return `http://${hostname}:${SERVER_PORT}`;
+  }
+  
+  // Lovable preview or any other environment - use Vultr server IP
   return `http://${SERVER_IP}:${SERVER_PORT}`;
 };
 
