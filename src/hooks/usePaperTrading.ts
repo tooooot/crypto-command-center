@@ -8,6 +8,7 @@ export interface Position {
   symbol: string;
   entryPrice: number;
   currentPrice: number;
+  binanceOrderId?: number; // Track Binance order ID for testnet
   quantity: number;
   investedAmount: number;
   highestPrice: number;
@@ -51,6 +52,27 @@ const MAX_OPEN_POSITIONS = 10; // Maximum concurrent positions
 const IS_TESTNET_MODE = true; // Testnet mode flag
 const PROFIT_LOCK_THRESHOLD = 3; // Lock profit when PnL > 3%
 const PROFIT_LOCK_LEVEL = 2; // Lock at 2% profit
+
+// Binance Testnet API functions
+const SUPABASE_URL = 'https://lpwhiqtclpiuozxdaipc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxwd2hpcXRjbHBpdW96eGRhaXBjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwOTgyODQsImV4cCI6MjA4NDY3NDI4NH0.qV4dfR1ccUQokIflxyfQpkmfs_R4p5HOUWrCdHitAPs';
+
+const callTestnetAPI = async (body: any): Promise<any> => {
+  try {
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/binance-testnet-trade`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify(body),
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Testnet API error:', error);
+    return { success: false, error: (error as Error).message };
+  }
+};
 
 export const usePaperTrading = (
   virtualBalance: number,
@@ -126,11 +148,34 @@ export const usePaperTrading = (
       pnlAmount: -fee,
     };
 
+    // Send actual order to Binance Testnet
+    if (IS_TESTNET_MODE) {
+      addLogEntry(`[TESTNET] جاري إرسال أمر شراء ${opportunity.symbol} إلى Binance...`, 'info');
+      
+      callTestnetAPI({
+        action: 'order',
+        symbol: opportunity.symbol,
+        side: 'BUY',
+        quantity: quantity.toFixed(6),
+      }).then(result => {
+        if (result.success && result.data?.orderId) {
+          addLogEntry(
+            `[TESTNET] ✓ تم إرسال أمر الشراء إلى Binance | Order ID: ${result.data.orderId}`,
+            'success'
+          );
+        } else if (result.data?.msg) {
+          addLogEntry(`[TESTNET] ⚠ رد Binance: ${result.data.msg}`, 'warning');
+        }
+      }).catch(err => {
+        addLogEntry(`[TESTNET] ✗ خطأ في إرسال الأمر: ${err.message}`, 'error');
+      });
+    }
+
     setPositions(prev => [...prev, newPosition]);
-    setVirtualBalance(prev => Math.max(0, prev - TRADE_AMOUNT)); // Ensure balance never goes below 0
+    setVirtualBalance(prev => Math.max(0, prev - TRADE_AMOUNT));
 
     addLogEntry(
-      `[شراء_افتراضي] العملة: ${opportunity.symbol} | السعر: $${entryPrice.toFixed(6)} | الكمية: ${quantity.toFixed(4)} | الاستراتيجية: ${opportunity.strategyName}`,
+      `[شراء] العملة: ${opportunity.symbol} | السعر: $${entryPrice.toFixed(6)} | الكمية: ${quantity.toFixed(4)} | الاستراتيجية: ${opportunity.strategyName}`,
       'success'
     );
   }, [positions, virtualBalance, setVirtualBalance, addLogEntry]);
@@ -158,6 +203,29 @@ export const usePaperTrading = (
       closedAt: new Date(),
       isWin,
     };
+
+    // Send sell order to Binance Testnet
+    if (IS_TESTNET_MODE) {
+      addLogEntry(`[TESTNET] جاري إرسال أمر بيع ${position.symbol} إلى Binance...`, 'info');
+      
+      callTestnetAPI({
+        action: 'order',
+        symbol: position.symbol,
+        side: 'SELL',
+        quantity: position.quantity.toFixed(6),
+      }).then(result => {
+        if (result.success && result.data?.orderId) {
+          addLogEntry(
+            `[TESTNET] ✓ تم إرسال أمر البيع إلى Binance | Order ID: ${result.data.orderId}`,
+            'success'
+          );
+        } else if (result.data?.msg) {
+          addLogEntry(`[TESTNET] ⚠ رد Binance: ${result.data.msg}`, 'warning');
+        }
+      }).catch(err => {
+        addLogEntry(`[TESTNET] ✗ خطأ في إرسال أمر البيع: ${err.message}`, 'error');
+      });
+    }
 
     setClosedTrades(prev => [...prev, closedTrade]);
     setPositions(prev => prev.filter(p => p.id !== position.id));
