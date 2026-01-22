@@ -9,10 +9,23 @@ interface HeaderProps {
   isPaused: boolean;
   onTogglePause: () => void;
   onSystemReset: () => void;
+  onVerifyServer?: () => Promise<unknown>;
+  isCheckingServer?: boolean;
+  serverConnected?: boolean | null;
   positions: Position[];
 }
 
-export const Header = ({ isConnected, lastUpdate, isPaused, onTogglePause, onSystemReset, positions }: HeaderProps) => {
+export const Header = ({ 
+  isConnected, 
+  lastUpdate, 
+  isPaused, 
+  onTogglePause, 
+  onSystemReset,
+  onVerifyServer,
+  isCheckingServer,
+  serverConnected,
+  positions 
+}: HeaderProps) => {
   return (
     <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
       <div className="container flex items-center justify-between h-14 px-4">
@@ -40,6 +53,9 @@ export const Header = ({ isConnected, lastUpdate, isPaused, onTogglePause, onSys
             isPaused={isPaused}
             onTogglePause={onTogglePause}
             onSystemReset={onSystemReset}
+            onVerifyServer={onVerifyServer}
+            isCheckingServer={isCheckingServer}
+            serverConnected={serverConnected}
           />
 
           <div className="flex items-center gap-2 text-xs">
