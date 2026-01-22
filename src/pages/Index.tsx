@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { EventLog } from '@/components/EventLog';
 import { DiagnosticBundle } from '@/components/DiagnosticBundle';
@@ -9,13 +9,14 @@ import { useEventLog } from '@/hooks/useEventLog';
 import { useBinanceData } from '@/hooks/useBinanceData';
 import { useStrategies } from '@/hooks/useStrategies';
 import { usePaperTrading } from '@/hooks/usePaperTrading';
-import { saveSession, getSession, initDB } from '@/lib/indexedDB';
+import { saveSession, getSession, initDB, fullSystemReset, clearLogs } from '@/lib/indexedDB';
 
 const INITIAL_BALANCE = 100;
 
 const Index = () => {
   const [virtualBalance, setVirtualBalance] = useState(INITIAL_BALANCE);
-  const { logs, addLogEntry, clearAllLogs } = useEventLog();
+  const [isPaused, setIsPaused] = useState(false);
+  const { logs, addLogEntry, clearAllLogs, reloadLogs } = useEventLog();
   const { coins, loading, error, lastUpdate, refetch } = useBinanceData(addLogEntry);
   const { results, logStrategyResults } = useStrategies(coins, addLogEntry);
   const {
@@ -30,10 +31,32 @@ const Index = () => {
   } = usePaperTrading(virtualBalance, setVirtualBalance, coins, addLogEntry);
   const lastLoggedUpdate = useRef<string | null>(null);
 
-  // Handle hard reset
+  // Handle hard reset (positions only)
   const handleHardReset = () => {
     hardReset(INITIAL_BALANCE);
   };
+
+  // Handle full system reset (everything)
+  const handleSystemReset = useCallback(async () => {
+    await fullSystemReset();
+    hardReset(INITIAL_BALANCE);
+    reloadLogs();
+    addLogEntry(`[إعادة_تعيين_النظام] تم تصفير جميع البيانات. الرصيد: ${INITIAL_BALANCE} USDT`, 'warning');
+  }, [hardReset, reloadLogs, addLogEntry]);
+
+  // Handle pause toggle
+  const handleTogglePause = useCallback(() => {
+    setIsPaused(prev => {
+      const newState = !prev;
+      addLogEntry(
+        newState 
+          ? '[إيقاف_مؤقت] تم إيقاف المحرك عن فتح صفقات جديدة' 
+          : '[استئناف] تم استئناف المحرك',
+        newState ? 'warning' : 'success'
+      );
+      return newState;
+    });
+  }, [addLogEntry]);
 
   // Initialize IndexedDB and load session
   useEffect(() => {
@@ -64,18 +87,20 @@ const Index = () => {
         if (results.totalBreakouts > 0 || results.totalRsiBounces > 0) {
           logStrategyResults(results);
           
-          // Process opportunities for paper trading
-          const allOpportunities = [...results.breakouts, ...results.rsiBounces];
-          processOpportunities(allOpportunities);
+          // Process opportunities for paper trading (only if not paused)
+          if (!isPaused) {
+            const allOpportunities = [...results.breakouts, ...results.rsiBounces];
+            processOpportunities(allOpportunities);
+          }
         }
         
         addLogEntry(
-          `[نتائج_الفحص] استراتيجية 10: ${results.totalBreakouts} | استراتيجية 65: ${results.totalRsiBounces}`,
+          `[نتائج_الفحص] استراتيجية 10: ${results.totalBreakouts} | استراتيجية 65: ${results.totalRsiBounces}${isPaused ? ' [متوقف]' : ''}`,
           results.totalBreakouts > 0 || results.totalRsiBounces > 0 ? 'warning' : 'info'
         );
       }
     }
-  }, [coins, lastUpdate, results, logStrategyResults, addLogEntry, processOpportunities]);
+  }, [coins, lastUpdate, results, logStrategyResults, addLogEntry, processOpportunities, isPaused]);
 
   // Save session on changes
   useEffect(() => {
@@ -96,7 +121,13 @@ const Index = () => {
 
   return (
     <div className="min-h-screen flex flex-col" dir="rtl">
-      <Header isConnected={!error && coins.length > 0} lastUpdate={lastUpdate} />
+      <Header 
+        isConnected={!error && coins.length > 0} 
+        lastUpdate={lastUpdate}
+        isPaused={isPaused}
+        onTogglePause={handleTogglePause}
+        onSystemReset={handleSystemReset}
+      />
 
       <main className="flex-1 container py-4 px-4">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
