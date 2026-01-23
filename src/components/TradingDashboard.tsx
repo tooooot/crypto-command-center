@@ -84,35 +84,11 @@ export const TradingDashboard = () => {
     [isolatedVirtualTrading, virtualStrategy]
   );
 
-  // Multi-Portfolio breakdown data
+  // v2.3-S20-Only: Only show scalping strategy (others disabled)
   const portfolioBreakdownData = useMemo(() => [
     {
-      id: 'breakout',
-      label: 'الاختراق S10',
-      balance: isolatedVirtualTrading.breakout.balance,
-      openPositionsValue: isolatedVirtualTrading.breakout.openPositionsValue,
-      totalPortfolio: isolatedVirtualTrading.breakout.totalPortfolio,
-      pnl: isolatedVirtualTrading.breakout.stats.totalPnL,
-      roi: ((isolatedVirtualTrading.breakout.totalPortfolio - 5000) / 5000) * 100,
-      trades: isolatedVirtualTrading.breakout.stats.totalTrades,
-      winRate: isolatedVirtualTrading.breakout.stats.winRate,
-      isExperimental: false,
-    },
-    {
-      id: 'rsiBounce',
-      label: 'الارتداد S65',
-      balance: isolatedVirtualTrading.rsiBounce.balance,
-      openPositionsValue: isolatedVirtualTrading.rsiBounce.openPositionsValue,
-      totalPortfolio: isolatedVirtualTrading.rsiBounce.totalPortfolio,
-      pnl: isolatedVirtualTrading.rsiBounce.stats.totalPnL,
-      roi: ((isolatedVirtualTrading.rsiBounce.totalPortfolio - 5000) / 5000) * 100,
-      trades: isolatedVirtualTrading.rsiBounce.stats.totalTrades,
-      winRate: isolatedVirtualTrading.rsiBounce.stats.winRate,
-      isExperimental: false,
-    },
-    {
       id: 'scalping',
-      label: 'النطاق S20',
+      label: 'النطاق S20 (المحرك الوحيد)',
       balance: isolatedVirtualTrading.scalping.balance,
       openPositionsValue: isolatedVirtualTrading.scalping.openPositionsValue,
       totalPortfolio: isolatedVirtualTrading.scalping.totalPortfolio,
@@ -121,30 +97,6 @@ export const TradingDashboard = () => {
       trades: isolatedVirtualTrading.scalping.stats.totalTrades,
       winRate: isolatedVirtualTrading.scalping.stats.winRate,
       isExperimental: false,
-    },
-    {
-      id: 'institutional',
-      label: 'المؤسسي🏛️',
-      balance: isolatedVirtualTrading.institutional.balance,
-      openPositionsValue: isolatedVirtualTrading.institutional.openPositionsValue,
-      totalPortfolio: isolatedVirtualTrading.institutional.totalPortfolio,
-      pnl: isolatedVirtualTrading.institutional.stats.totalPnL,
-      roi: ((isolatedVirtualTrading.institutional.totalPortfolio - 5000) / 5000) * 100,
-      trades: isolatedVirtualTrading.institutional.stats.totalTrades,
-      winRate: isolatedVirtualTrading.institutional.stats.winRate,
-      isExperimental: false, // v2.1-Live: NOW LIVE EXECUTION
-    },
-    {
-      id: 'crossover',
-      label: 'التقاطعات',
-      balance: isolatedVirtualTrading.crossover.balance,
-      openPositionsValue: isolatedVirtualTrading.crossover.openPositionsValue,
-      totalPortfolio: isolatedVirtualTrading.crossover.totalPortfolio,
-      pnl: isolatedVirtualTrading.crossover.stats.totalPnL,
-      roi: ((isolatedVirtualTrading.crossover.totalPortfolio - 5000) / 5000) * 100,
-      trades: isolatedVirtualTrading.crossover.stats.totalTrades,
-      winRate: isolatedVirtualTrading.crossover.stats.winRate,
-      isExperimental: true,
     },
   ], [isolatedVirtualTrading]);
 
@@ -202,56 +154,51 @@ export const TradingDashboard = () => {
     );
   }, [addLogEntry]);
 
-  // Process opportunities based on active tab and auto-trading setting
+  // v2.3-S20-Only: Process opportunities - only scalping (S20) is active
   useEffect(() => {
     if (coins.length > 0 && lastUpdate) {
       const updateKey = lastUpdate.toISOString();
       if (lastLoggedUpdate.current !== updateKey) {
         lastLoggedUpdate.current = updateKey;
         
-        // v2.2-Live: Log scan results with dynamic position sizing
-        addLogEntry(`[v2.2-Live:فحص] ${coins.length} أصل | Position Sizing: 40% من الرصيد | الحد الأدنى: 10 USDT | عتبة التنفيذ: ≥60/100`, 'info');
+        // v2.3-S20-Only: Log scan results
+        addLogEntry(`[v2.3-S20:LIVE:فحص] ${coins.length} أصل | المحرك: S20 فقط | Position Sizing: 40% | الحد الأدنى: 10 USDT | عتبة ≥60`, 'info');
         logStrategyResults(results);
         
-        if (results.totalBreakouts > 0 || results.totalRsiBounces > 0 || results.totalScalpings > 0) {
+        // v2.3: Only check for scalping opportunities (S20)
+        if (results.totalScalpings > 0) {
           
           if (goldenOpportunity) {
             logGoldenOpportunity();
           }
           
-          // Determine if auto-trading is enabled for the active tab
           const isLiveAutoEnabled = liveAutoTrading;
           const isVirtualAutoEnabled = virtualAutoTrading;
           
           if (!isPaused) {
-            // Get filtered opportunities based on strategy selection
-            const liveFilteredOpps = getFilteredOpportunities(liveStrategy);
-            const virtualFilteredOpps = getFilteredOpportunities(virtualStrategy);
+            // v2.3: Only use scalping results
+            const scalpingOpps = results.scalpings;
             
             // Process for LIVE tab
-            if (isLiveAutoEnabled && liveFilteredOpps.length > 0) {
-              // Auto mode: skip confirmation (true = execute immediately)
-              liveTradingHook.processOpportunities(liveFilteredOpps, true);
-              addLogEntry(`[آلي:LIVE] تنفيذ فوري لـ ${liveFilteredOpps.length} فرصة`, 'success');
-            } else if (liveFilteredOpps.length > 0) {
-              // Manual mode: add to pending (false = require confirmation)
-              liveTradingHook.processOpportunities(liveFilteredOpps, false);
+            if (isLiveAutoEnabled && scalpingOpps.length > 0) {
+              liveTradingHook.processOpportunities(scalpingOpps, true);
+              addLogEntry(`[v2.3-S20:LIVE:تنفيذ] ${scalpingOpps.length} فرصة S20`, 'success');
+            } else if (scalpingOpps.length > 0) {
+              liveTradingHook.processOpportunities(scalpingOpps, false);
             }
             
-            // Process for VIRTUAL tab - uses isolated strategy engine
-            if (isVirtualAutoEnabled && virtualFilteredOpps.length > 0) {
-              // Auto mode: skip confirmation (true = execute immediately)
-              isolatedVirtualTrading.processOpportunities(virtualFilteredOpps, true, virtualStrategy);
-              addLogEntry(`[آلي:افتراضي] تنفيذ فوري لـ ${virtualFilteredOpps.length} فرصة`, 'success');
-            } else if (virtualFilteredOpps.length > 0) {
-              // Manual mode: add to pending (false = require confirmation)
-              isolatedVirtualTrading.processOpportunities(virtualFilteredOpps, false, virtualStrategy);
+            // Process for VIRTUAL tab
+            if (isVirtualAutoEnabled && scalpingOpps.length > 0) {
+              isolatedVirtualTrading.processOpportunities(scalpingOpps, true, 'scalping');
+              addLogEntry(`[v2.3-S20:افتراضي:تنفيذ] ${scalpingOpps.length} فرصة S20`, 'success');
+            } else if (scalpingOpps.length > 0) {
+              isolatedVirtualTrading.processOpportunities(scalpingOpps, false, 'scalping');
             }
           }
         }
       }
     }
-  }, [coins, lastUpdate, results, allOpportunities, isPaused, liveAutoTrading, virtualAutoTrading, liveStrategy, virtualStrategy, getFilteredOpportunities, isolatedVirtualTrading, addLogEntry]);
+  }, [coins, lastUpdate, results, isPaused, liveAutoTrading, virtualAutoTrading, isolatedVirtualTrading, addLogEntry, goldenOpportunity, logGoldenOpportunity, liveTradingHook, logStrategyResults]);
 
   // Handle golden opportunity buy
   const handleGoldenBuy = useCallback(() => {
@@ -389,72 +336,17 @@ export const TradingDashboard = () => {
 
           {/* Virtual Trading Tab with Strategy Sub-Tabs */}
           <TabsContent value="virtual" className="mt-4 space-y-4">
-            {/* Strategy Sub-Navigation - 4 Tabs */}
+            {/* v2.3-S20-Only: Only S20 is active */}
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-              {/* Core Strategies (الكنز) */}
-              <button
-                onClick={() => setVirtualStrategy('all')}
-                className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-                  virtualStrategy === 'all'
-                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/50'
-                    : 'bg-secondary/50 text-muted-foreground border border-border/50 hover:bg-secondary'
-                }`}
-              >
-                📊 الكل
-              </button>
-              <button
-                onClick={() => setVirtualStrategy('breakout')}
-                className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-                  virtualStrategy === 'breakout'
-                    ? 'bg-terminal-green/20 text-terminal-green border border-terminal-green/50'
-                    : 'bg-secondary/50 text-muted-foreground border border-border/50 hover:bg-secondary'
-                }`}
-              >
-                🚀 الاختراق
-              </button>
-              <button
-                onClick={() => setVirtualStrategy('rsiBounce')}
-                className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-                  virtualStrategy === 'rsiBounce'
-                    ? 'bg-terminal-green/20 text-terminal-green border border-terminal-green/50'
-                    : 'bg-secondary/50 text-muted-foreground border border-border/50 hover:bg-secondary'
-                }`}
-              >
-                📈 الارتداد
-              </button>
               <button
                 onClick={() => setVirtualStrategy('scalping')}
-                className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-                  virtualStrategy === 'scalping'
-                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
-                    : 'bg-secondary/50 text-muted-foreground border border-border/50 hover:bg-secondary'
-                }`}
+                className="px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all bg-cyan-500/20 text-cyan-400 border border-cyan-500/50"
               >
-                📊 النطاق (S20)
+                📊 النطاق S20 (المحرك الوحيد)
               </button>
-              
-              {/* Experimental Strategies (تجريبية) */}
-              <div className="w-px bg-border/50 mx-1" />
-              <button
-                onClick={() => setVirtualStrategy('institutional')}
-                className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-                  virtualStrategy === 'institutional'
-                    ? 'bg-purple-500/20 text-purple-400 border border-purple-500/50'
-                    : 'bg-secondary/50 text-muted-foreground border border-border/50 hover:bg-secondary'
-                }`}
-              >
-                🏛️ المؤسسي
-              </button>
-              <button
-                onClick={() => setVirtualStrategy('crossover')}
-                className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-                  virtualStrategy === 'crossover'
-                    ? 'bg-purple-500/20 text-purple-400 border border-purple-500/50'
-                    : 'bg-secondary/50 text-muted-foreground border border-border/50 hover:bg-secondary'
-                }`}
-              >
-                ⚡ التقاطعات
-              </button>
+              <span className="px-3 py-2 text-xs text-muted-foreground flex items-center">
+                S10, S65, المؤسسي، التقاطعات: معطلة
+              </span>
             </div>
 
             {/* Golden Opportunity */}

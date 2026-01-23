@@ -58,7 +58,7 @@ export interface PerformanceStats {
   totalTrades: number;
 }
 
-// v2.2-Live: Dynamic Position Sizing (Percentage-Based)
+// v2.3-S20-Only: Dynamic Position Sizing (Percentage-Based)
 const TRADE_PERCENT = 40; // 40% of available balance per trade
 const MIN_TRADE_AMOUNT = 10; // Binance minimum: 10 USDT
 const RESERVED_BALANCE = 5; // Reserve 5 USDT for fees
@@ -68,7 +68,7 @@ const SLIPPAGE_PERCENT = 0.2; // 0.2% slippage tolerance for market orders
 const MAX_OPEN_POSITIONS = 10; // Maximum concurrent positions
 const PROFIT_LOCK_THRESHOLD = 3; // Lock profit when PnL > 3%
 const PROFIT_LOCK_LEVEL = 2; // Lock at 2% profit
-const UNIVERSAL_AUTO_BUY_THRESHOLD = 60; // v2.2-Live: Any score >= 60 = instant buy
+const UNIVERSAL_AUTO_BUY_THRESHOLD = 60; // v2.3-S20: Any score >= 60 = instant buy
 const MAX_RETRY_ATTEMPTS = 3; // Max retry attempts (9 seconds total)
 const RETRY_INTERVAL = 3000; // 3 seconds between retries
 const API_TIMEOUT = 3000; // 3 second timeout for all API calls
@@ -107,10 +107,10 @@ const fetchWithTimeout = async (url: string, options: RequestInit, timeout: numb
 // Check Binance Mainnet connection and get balance
 const checkMainnetHealth = async (): Promise<{ online: boolean; latency: number; balance?: number }> => {
   const requestId = Date.now().toString(36).toUpperCase();
-  console.log(`[v2.2-Live:HEALTH:${requestId}] ════════════════════════════════════`);
-  console.log(`[v2.2-Live:HEALTH:${requestId}] BINANCE MAINNET CONNECTION TEST`);
-  console.log(`[v2.2-Live:HEALTH:${requestId}] Time: ${new Date().toISOString()}`);
-  console.log(`[v2.2-Live:HEALTH:${requestId}] Endpoint: ${BINANCE_MAINNET_ENDPOINT}`);
+  console.log(`[v2.3-S20:HEALTH:${requestId}] ════════════════════════════════════`);
+  console.log(`[v2.3-S20:HEALTH:${requestId}] BINANCE MAINNET CONNECTION TEST`);
+  console.log(`[v2.3-S20:HEALTH:${requestId}] Time: ${new Date().toISOString()}`);
+  console.log(`[v2.3-S20:HEALTH:${requestId}] Endpoint: ${BINANCE_MAINNET_ENDPOINT}`);
   
   const startTime = performance.now();
   
@@ -127,12 +127,12 @@ const checkMainnetHealth = async (): Promise<{ online: boolean; latency: number;
     const elapsed = Math.round(performance.now() - startTime);
     const data = await response.json();
     
-    console.log(`[v2.2-Live:HEALTH:${requestId}] RESPONSE RECEIVED`);
-    console.log(`[v2.2-Live:HEALTH:${requestId}] Status: ${response.status}`);
-    console.log(`[v2.2-Live:HEALTH:${requestId}] Success: ${data.success}`);
-    console.log(`[v2.2-Live:HEALTH:${requestId}] Balance: ${data.data?.balance} USDT`);
-    console.log(`[v2.2-Live:HEALTH:${requestId}] Latency: ${elapsed}ms`);
-    console.log(`[v2.2-Live:HEALTH:${requestId}] ════════════════════════════════════`);
+    console.log(`[v2.3-S20:HEALTH:${requestId}] RESPONSE RECEIVED`);
+    console.log(`[v2.3-S20:HEALTH:${requestId}] Status: ${response.status}`);
+    console.log(`[v2.3-S20:HEALTH:${requestId}] Success: ${data.success}`);
+    console.log(`[v2.3-S20:HEALTH:${requestId}] Balance: ${data.data?.balance} USDT`);
+    console.log(`[v2.3-S20:HEALTH:${requestId}] Latency: ${elapsed}ms`);
+    console.log(`[v2.3-S20:HEALTH:${requestId}] ════════════════════════════════════`);
     
     return { 
       online: data.success, 

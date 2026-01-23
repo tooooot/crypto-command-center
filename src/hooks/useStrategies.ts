@@ -2,62 +2,30 @@ import { useMemo, useRef, useEffect } from 'react';
 import { CoinData } from './useBinanceData';
 import { SYSTEM_VERSION } from '@/lib/version';
 
-// v2.1-Live - Ultra Flexible Entry System
+// v2.3-S20-Only: Only Scalping Strategy Active (others disabled but types kept for compatibility)
 const VERSION = SYSTEM_VERSION;
 
-// Core strategies (الكنز): breakout, rsi_bounce, scalping
-// Experimental strategies (تجريبية): institutional, crossover
+// Keep all strategy types for compatibility, but only 'scalping' produces results
 export type StrategyId = 'breakout' | 'rsi_bounce' | 'institutional' | 'crossover' | 'scalping';
 
-// Boost mode for experimental strategies (3 hours window)
-const BOOST_MODE_DURATION = 3 * 60 * 60 * 1000; // 3 hours in ms
-const boostModeStart = Date.now();
-const isBoostModeActive = () => Date.now() - boostModeStart < BOOST_MODE_DURATION;
-
-// Strategy Manifests (قوانين الاستراتيجية)
+// Strategy Manifests - Only S20 is active
 export const STRATEGY_MANIFESTS = {
-  breakout: {
-    name: 'S10 - الاختراق',
-    rules: [
-      'حد التذبذب: ≤ 10%',
-      'RSI المسموح: حتى 90 مع حجم ≥ 1.8x',
-      'الحد الأدنى للتغير: +1.0%',
-      'مبلغ الصفقة: 1000 USDT',
-    ],
-  },
-  rsi_bounce: {
-    name: 'S65 - ارتداد RSI',
-    rules: [
-      'شرط الدخول: عبور RSI من تحت 35 إلى فوق 35',
-      'مبلغ الصفقة: 1000 USDT',
-    ],
-  },
   scalping: {
-    name: 'S20 - النطاق',
+    name: 'S20 - النطاق (المحرك الوحيد النشط)',
     rules: [
-      'تذبذب منخفض: < 1.5%',
-      'RSI: بين 33-42',
-      'حجم التداول: > $10M',
+      'تذبذب منخفض: < 3%',
+      'RSI: بين 30-50',
+      'حجم التداول: > $5M',
       'TP: 1.2% | SL: 0.8%',
-      'مبلغ الصفقة: 1000 USDT',
+      'مبلغ الصفقة: 40% من الرصيد (الحد الأدنى 10 USDT)',
+      'تقييم ≥ 60 = شراء فوري',
     ],
   },
-  institutional: {
-    name: 'المؤسسي',
-    rules: [
-      'سيولة عالية: > $50M',
-      'تذبذب منخفض: < 10%',
-      'مبلغ الصفقة: 1000 USDT',
-    ],
-  },
-  crossover: {
-    name: 'التقاطعات',
-    rules: [
-      'RSI محايد: 35-65 (وضع التنشيط) أو 45-55',
-      'حجم: > 1.8x',
-      'مبلغ الصفقة: 1000 USDT',
-    ],
-  },
+  // Disabled strategies - kept for type compatibility
+  breakout: { name: 'S10 - معطل', rules: ['معطل في v2.3'] },
+  rsi_bounce: { name: 'S65 - معطل', rules: ['معطل في v2.3'] },
+  institutional: { name: 'المؤسسي - معطل', rules: ['معطل في v2.3'] },
+  crossover: { name: 'التقاطعات - معطل', rules: ['معطل في v2.3'] },
 };
 
 export interface StrategyResult {
@@ -145,92 +113,39 @@ export const useStrategies = (
   }, [coins]);
 
   const results = useMemo(() => {
-    // Core strategies (الكنز)
-    const breakouts: StrategyResult[] = [];
-    const rsiBounces: StrategyResult[] = [];
+    // v2.3-S20-Only: Only scalping strategy is active
     const scalpings: StrategyResult[] = [];
-    // Experimental strategies (تجريبية)
-    const institutionals: StrategyResult[] = [];
-    const crossovers: StrategyResult[] = [];
 
     coins.forEach((coin) => {
       const changePercent = parseFloat(coin.priceChangePercent);
-      const volumeMultiplier = calculateVolumeMultiplier(coin);
+      const volume24h = parseFloat(coin.quoteVolume);
       const rsiValue = calculateSimulatedRSI(changePercent);
       const atr = calculateATR(coin);
       const volatilityPercent = atr;
-      const volume24h = parseFloat(coin.quoteVolume);
-      const boostActive = isBoostModeActive();
+      const volumeMultiplier = calculateVolumeMultiplier(coin);
       
       // ═══════════════════════════════════════════════════════════════
-      // CORE STRATEGIES (الكنز) - v2.1 Flexible Entry
+      // 📊 S20: SCALPING STRATEGY - المحرك الوحيد النشط
+      // Expanded conditions for TRX, ZEC and similar assets
       // ═══════════════════════════════════════════════════════════════
       
-      // Strategy 10: Breakout Detection with Volume Confirmation
-      // v2.1-Final: Allow volatility up to 10%, RSI up to 90 if volume >= 1.8x, price change >= 1.0%
-      const isBreakoutVolumeSufficient = volumeMultiplier >= 1.8; // Lowered from 2.5x to 1.8x
-      const isBreakoutRSIAllowed = isBreakoutVolumeSufficient ? rsiValue <= 90 : rsiValue <= 70;
-      const isBreakoutVolatilityAllowed = volatilityPercent <= 10;
-      
-      if (changePercent >= 1.0 && isBreakoutVolumeSufficient && isBreakoutRSIAllowed && isBreakoutVolatilityAllowed) { // Lowered from 1.5% to 1.0%
+      // v2.3: Expanded conditions: volatility < 3%, RSI 30-50, Volume > $5M
+      // This allows TRX (high volume, stable) and ZEC to qualify
+      if (volatilityPercent < 3 && rsiValue >= 30 && rsiValue <= 50 && changePercent > -0.5 && changePercent < 2 && volume24h >= 5000000) {
         // Calculate opportunity score (0-100)
-        const volumeScore = Math.min(40, (volumeMultiplier / 5) * 40);
-        const rsiScore = rsiValue < 70 ? 30 : (90 - rsiValue) / 20 * 30;
-        const stabilityScore = Math.max(0, 30 - volatilityPercent * 3);
+        const volumeScore = Math.min(40, (volume24h / 50000000) * 40); // High volume = better
+        const rsiScore = rsiValue >= 35 && rsiValue <= 45 ? 30 : 20; // Optimal RSI zone
+        const stabilityScore = Math.max(0, 30 - volatilityPercent * 10); // Low volatility = better
         const totalScore = Math.round(volumeScore + rsiScore + stabilityScore);
         
-        const entryReason = `اختراق +${changePercent.toFixed(2)}% | حجم ${volumeMultiplier.toFixed(1)}x | RSI ${rsiValue.toFixed(0)} | تذبذب ${volatilityPercent.toFixed(1)}%`;
-        breakouts.push({
-          symbol: coin.symbol,
-          price: coin.price,
-          priceChangePercent: coin.priceChangePercent,
-          strategy: 'breakout',
-          strategyName: 'اختراق مؤكد',
-          entryReason,
-          volumeMultiplier,
-          rsiValue,
-          atr,
-          volatilityPercent,
-          isExperimental: false,
-          score: totalScore,
-        });
-      }
-
-      // Strategy 65: RSI Bounce Detection
-      // Conditions: RSI was below 35 and NOW crosses ABOVE 35 (upward crossover)
-      const history = rsiHistory.current.get(coin.symbol);
-      if (history?.crossedUp) {
-        const entryReason = `ارتداد RSI | قفز من ${history.previousRSI.toFixed(0)} → ${history.currentRSI.toFixed(0)} (فوق 35)`;
-        rsiBounces.push({
-          symbol: coin.symbol,
-          price: coin.price,
-          priceChangePercent: coin.priceChangePercent,
-          strategy: 'rsi_bounce',
-          strategyName: 'ارتداد RSI مؤكد',
-          entryReason,
-          volumeMultiplier,
-          rsiValue: history.currentRSI,
-          atr,
-          volatilityPercent,
-          isExperimental: false,
-        });
-      }
-
-      // ═══════════════════════════════════════════════════════════════
-      // 📊 SCALPING STRATEGY (النطاق) - S20: Low Volatility Range Trading
-      // ═══════════════════════════════════════════════════════════════
-      
-      // Conditions: Very low volatility (<1.5%) + RSI bouncing from 35 area + Volume > $10M
-      // Take Profit: 1.2% fixed, Stop Loss: 0.8% for fast turnover
-      if (volatilityPercent < 1.5 && rsiValue >= 33 && rsiValue <= 42 && changePercent > 0.1 && changePercent < 1 && volume24h >= 10000000) {
-        const takeProfitPercent = 1.2; // Fixed 1.2% TP for fast turnover
-        const entryReason = `نطاق ضيق | حجم $${(volume24h / 1000000).toFixed(0)}M | تذبذب ${volatilityPercent.toFixed(2)}% | RSI ${rsiValue.toFixed(0)} | TP:1.2% SL:0.8%`;
+        const takeProfitPercent = 1.2; // Fixed 1.2% TP
+        const entryReason = `نطاق S20 | حجم $${(volume24h / 1000000).toFixed(0)}M | تذبذب ${volatilityPercent.toFixed(2)}% | RSI ${rsiValue.toFixed(0)} | TP:1.2% SL:0.8%`;
         scalpings.push({
           symbol: coin.symbol,
           price: coin.price,
           priceChangePercent: coin.priceChangePercent,
           strategy: 'scalping',
-          strategyName: 'سكالبينج النطاق',
+          strategyName: 'سكالبينج النطاق S20',
           entryReason,
           volumeMultiplier,
           rsiValue,
@@ -238,173 +153,41 @@ export const useStrategies = (
           volatilityPercent,
           isExperimental: false,
           takeProfitPercent,
-        });
-      }
-
-      // ═══════════════════════════════════════════════════════════════
-      // 🏛️ INSTITUTIONAL STRATEGY - v2.1-Live: REAL EXECUTION (not experimental)
-      // ═══════════════════════════════════════════════════════════════
-      
-      // 🏛️ Institutional Strategy: High Volume + Stable Movement
-      // v2.1-Live: Allow volatility up to 10%, RSI bypass in boost mode
-      const institutionalRSIPass = boostActive ? true : (rsiValue < 70);
-      if (volume24h > 50000000 && volatilityPercent < 10 && changePercent > 0.3 && changePercent < 5 && institutionalRSIPass) {
-        const volumeScore = Math.min(40, (volume24h / 100000000) * 40);
-        const rsiScore = rsiValue < 50 ? 30 : 30 - ((rsiValue - 50) / 40 * 30);
-        const stabilityScore = Math.max(0, 30 - volatilityPercent * 3);
-        const totalScore = Math.round(volumeScore + rsiScore + stabilityScore);
-        
-        const boostTag = boostActive ? ' [🚀وضع التنشيط]' : '';
-        const entryReason = `حجم مؤسسي $${(volume24h / 1000000).toFixed(0)}M | تذبذب ${volatilityPercent.toFixed(1)}%${boostTag}`;
-        institutionals.push({
-          symbol: coin.symbol,
-          price: coin.price,
-          priceChangePercent: coin.priceChangePercent,
-          strategy: 'institutional',
-          strategyName: 'صفقة مؤسسية',
-          entryReason,
-          volumeMultiplier,
-          rsiValue,
-          atr,
-          volatilityPercent,
-          isExperimental: false, // v2.1-Live: NOW REAL EXECUTION
           score: totalScore,
-        });
-      }
-
-      // ⚡ Crossover Strategy: RSI + Volume Alignment
-      // BOOST MODE: Widen RSI zone from 45-55 to 35-65
-      const rsiMin = boostActive ? 35 : 45;
-      const rsiMax = boostActive ? 65 : 55;
-      if (rsiValue >= rsiMin && rsiValue <= rsiMax && volumeMultiplier >= 1.8 && changePercent > 0.5) {
-        const boostTag = boostActive ? ' [🚀وضع التنشيط]' : '';
-        const entryReason = `تقاطع محايد RSI=${rsiValue.toFixed(0)} | حجم ${volumeMultiplier.toFixed(1)}x | زخم +${changePercent.toFixed(2)}%${boostTag}`;
-        crossovers.push({
-          symbol: coin.symbol,
-          price: coin.price,
-          priceChangePercent: coin.priceChangePercent,
-          strategy: 'crossover',
-          strategyName: 'تقاطع زخمي',
-          entryReason,
-          volumeMultiplier,
-          rsiValue,
-          atr,
-          volatilityPercent,
-          isExperimental: true,
         });
       }
     });
 
     return {
-      // Core
-      breakouts,
-      rsiBounces,
+      // v2.3-S20-Only: Only scalping results returned
       scalpings,
-      totalBreakouts: breakouts.length,
-      totalRsiBounces: rsiBounces.length,
       totalScalpings: scalpings.length,
-      // Experimental
-      institutionals,
-      crossovers,
-      totalInstitutionals: institutionals.length,
-      totalCrossovers: crossovers.length,
+      // Disabled strategies return empty
+      breakouts: [] as StrategyResult[],
+      rsiBounces: [] as StrategyResult[],
+      institutionals: [] as StrategyResult[],
+      crossovers: [] as StrategyResult[],
+      totalBreakouts: 0,
+      totalRsiBounces: 0,
+      totalInstitutionals: 0,
+      totalCrossovers: 0,
     };
   }, [coins]);
 
-  // Log strategy detections with detailed reasons and FORCED silence notifications
+  // v2.3-S20-Only: Log only S20 results - no experimental tags
   const logStrategyResults = (results: ReturnType<typeof useStrategies>['results']) => {
-    const boostActive = isBoostModeActive();
-    const boostStatus = boostActive ? '[🚀 وضع التنشيط: نشط]' : '';
-    
-    // === CORE STRATEGIES (الكنز) ===
-    
-    // S10: Breakout
-    if (results.breakouts.length > 0) {
-      results.breakouts.slice(0, 3).forEach((result) => {
-        addLogEntry(
-          `[${VERSION}][الاختراق:S10] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | تقييم: ${result.score || 0}/100 | ${result.entryReason}`,
-          'warning'
-        );
-      });
-    } else {
-      // FORCED: Technical reason for no S10 opportunities
-      addLogEntry(
-        `[${VERSION}][الاختراق:S10] لا فرص حالياً | السبب: لا يوجد أصل يحقق (تغير ≥1.5% + حجم ≥2.5x + تذبذب ≤10%)`,
-        'info'
-      );
-    }
-
-    // S65: RSI Bounce
-    if (results.rsiBounces.length > 0) {
-      results.rsiBounces.slice(0, 3).forEach((result) => {
-        addLogEntry(
-          `[${VERSION}][الارتداد:S65] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | ${result.entryReason}`,
-          'warning'
-        );
-      });
-    } else {
-      // FORCED: Technical reason for no S65 opportunities
-      addLogEntry(
-        `[${VERSION}][الارتداد:S65] لا فرص حالياً | السبب: لا يوجد عبور RSI من تحت 35 إلى فوق 35`,
-        'info'
-      );
-    }
-
-    // S20: Scalping
+    // S20: Scalping - المحرك الوحيد النشط
     if (results.scalpings.length > 0) {
-      results.scalpings.slice(0, 3).forEach((result) => {
+      results.scalpings.slice(0, 5).forEach((result) => {
         addLogEntry(
-          `[${VERSION}][النطاق:S20] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | ${result.entryReason}`,
+          `[${VERSION}][النطاق:S20:LIVE] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | تقييم: ${result.score || 0}/100 | ${result.entryReason}`,
           'warning'
         );
       });
     } else {
-      // FORCED: Technical reason for no S20 opportunities
       addLogEntry(
-        `[${VERSION}][النطاق:S20] لا فرص حالياً | السبب: لا يوجد أصل يحقق (تذبذب <1.5% + RSI 33-42 + حجم >$10M)`,
+        `[${VERSION}][النطاق:S20:LIVE] لا فرص حالياً | البحث عن أصول (تذبذب <3% + RSI 30-50 + حجم >$5M)`,
         'info'
-      );
-    }
-
-    // === EXPERIMENTAL STRATEGIES (تجريبية) ===
-    
-    if (results.institutionals.length > 0) {
-      results.institutionals.slice(0, 2).forEach((result) => {
-        addLogEntry(
-          `[${VERSION}][المؤسسي:تجريبي] ${result.symbol} | تقييم: ${result.score || 0}/100 | ${result.entryReason}`,
-          'info'
-        );
-      });
-    } else {
-      addLogEntry(
-        `[${VERSION}][المؤسسي🏛️] لا فرص حالياً | السبب: لا يوجد أصل (سيولة >$50M + تذبذب <10%) ${boostStatus}`,
-        'info'
-      );
-    }
-
-    if (results.crossovers.length > 0) {
-      results.crossovers.slice(0, 2).forEach((result) => {
-        addLogEntry(
-          `[${VERSION}][التقاطعات:تجريبي] ${result.symbol} | ${result.entryReason}`,
-          'info'
-        );
-      });
-    } else {
-      const rsiRange = boostActive ? '35-65' : '45-55';
-      addLogEntry(
-        `[${VERSION}][التقاطعات⚡] لا فرص حالياً | السبب: لا يوجد RSI محايد (${rsiRange}) مع حجم ≥1.8x ${boostStatus}`,
-        'info'
-      );
-    }
-
-    // Boost mode status
-    if (boostActive) {
-      const remainingMs = BOOST_MODE_DURATION - (Date.now() - boostModeStart);
-      const remainingHours = Math.floor(remainingMs / (60 * 60 * 1000));
-      const remainingMins = Math.floor((remainingMs % (60 * 60 * 1000)) / (60 * 1000));
-      addLogEntry(
-        `[${VERSION}][تنشيط المحركات] وضع التعزيز نشط | متبقي: ${remainingHours}س ${remainingMins}د`,
-        'success'
       );
     }
   };
