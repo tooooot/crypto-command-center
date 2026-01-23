@@ -3,6 +3,9 @@ import { CoinData } from './useBinanceData';
 import { StrategyResult } from './useStrategies';
 import { playProfitSound } from '@/lib/sounds';
 
+// Execution status for tracking trades
+export type ExecutionStatus = 'idle' | 'buying' | 'executed' | 'retrying' | 'failed';
+
 export interface Position {
   id: string;
   symbol: string;
@@ -41,6 +44,9 @@ export interface PendingOpportunity {
   id: string;
   opportunity: StrategyResult;
   detectedAt: Date;
+  executionStatus: ExecutionStatus;
+  retryCount: number;
+  reservedAmount: number;
 }
 
 export interface PerformanceStats {
@@ -60,6 +66,9 @@ const MIN_BALANCE_FOR_TRADE = 10; // Minimum 10 USDT
 const MAX_OPEN_POSITIONS = 10; // Maximum concurrent positions
 const PROFIT_LOCK_THRESHOLD = 3; // Lock profit when PnL > 3%
 const PROFIT_LOCK_LEVEL = 2; // Lock at 2% profit
+const RESERVED_PER_TRADE = 500; // Reserve 500 USDT per pending trade
+const MAX_RETRY_ATTEMPTS = 6; // Max retry attempts (30 seconds total)
+const RETRY_INTERVAL = 5000; // 5 seconds between retries
 
 // Trade API Configuration - Via Edge Function Proxy
 const SUPABASE_URL = 'https://lpwhiqtclpiuozxdaipc.supabase.co';
@@ -239,16 +248,91 @@ export const usePaperTrading = (
     }
   }, [addLogEntry]);
 
+  // Reserved amount tracking for pending trades
+  const [reservedLiquidity, setReservedLiquidity] = useState(0);
+
+  // Execute with auto-retry logic
+  const executeWithRetry = useCallback(async (
+    opportunity: StrategyResult,
+    pendingId?: string,
+    currentRetry: number = 0
+  ): Promise<boolean> => {
+    // Reserve liquidity on first attempt
+    if (currentRetry === 0 && virtualBalance >= RESERVED_PER_TRADE) {
+      setReservedLiquidity(prev => prev + RESERVED_PER_TRADE);
+      setVirtualBalance(prev => prev - RESERVED_PER_TRADE);
+      addLogEntry(`[حجز_سيولة] تم حجز ${RESERVED_PER_TRADE} USDT لشراء ${opportunity.symbol}`, 'info');
+    }
+
+    // Update pending status
+    if (pendingId) {
+      setPendingOpportunities(prev => prev.map(p => 
+        p.id === pendingId 
+          ? { ...p, executionStatus: (currentRetry > 0 ? 'retrying' : 'buying') as ExecutionStatus, retryCount: currentRetry, reservedAmount: RESERVED_PER_TRADE }
+          : p
+      ));
+    }
+
+    addLogEntry(`[تنفيذ${currentRetry > 0 ? `:محاولة ${currentRetry + 1}` : ''}] جاري شراء ${opportunity.symbol}...`, 'info');
+    
+    const success = await executeBuyOrder(opportunity);
+    
+    if (success) {
+      // Release reservation and deduct actual trade amount
+      setReservedLiquidity(prev => Math.max(0, prev - RESERVED_PER_TRADE));
+      setVirtualBalance(prev => prev + RESERVED_PER_TRADE - TRADE_AMOUNT);
+      
+      if (pendingId) {
+        setPendingOpportunities(prev => prev.map(p => 
+          p.id === pendingId ? { ...p, executionStatus: 'executed' as ExecutionStatus } : p
+        ));
+        // Remove after showing executed status briefly
+        setTimeout(() => {
+          setPendingOpportunities(prev => prev.filter(p => p.id !== pendingId));
+        }, 3000);
+      }
+      return true;
+    }
+    
+    // Failed - check if we should retry
+    if (currentRetry < MAX_RETRY_ATTEMPTS) {
+      addLogEntry(`[إعادة_محاولة] فشل شراء ${opportunity.symbol} - إعادة المحاولة خلال 5 ثوانٍ (${currentRetry + 1}/${MAX_RETRY_ATTEMPTS})`, 'warning');
+      
+      if (pendingId) {
+        setPendingOpportunities(prev => prev.map(p => 
+          p.id === pendingId ? { ...p, executionStatus: 'retrying' as ExecutionStatus, retryCount: currentRetry + 1 } : p
+        ));
+      }
+      
+      // Schedule retry
+      await new Promise(resolve => setTimeout(resolve, RETRY_INTERVAL));
+      return executeWithRetry(opportunity, pendingId, currentRetry + 1);
+    }
+    
+    // Final failure - release reserved liquidity
+    setReservedLiquidity(prev => Math.max(0, prev - RESERVED_PER_TRADE));
+    setVirtualBalance(prev => prev + RESERVED_PER_TRADE);
+    addLogEntry(`[تحرير_سيولة] تم إرجاع ${RESERVED_PER_TRADE} USDT بعد فشل نهائي لـ ${opportunity.symbol}`, 'warning');
+    
+    if (pendingId) {
+      setPendingOpportunities(prev => prev.map(p => 
+        p.id === pendingId ? { ...p, executionStatus: 'failed' as ExecutionStatus } : p
+      ));
+    }
+    
+    return false;
+  }, [executeBuyOrder, virtualBalance, setVirtualBalance, addLogEntry]);
+
   // Open a new position (with or without manual confirmation)
   const openPosition = useCallback(async (opportunity: StrategyResult, skipConfirmation: boolean = false) => {
     // Check if we already have a position for this symbol
     const existingPosition = positions.find(p => p.symbol === opportunity.symbol);
     if (existingPosition) return;
 
-    // Check balance (with 12 USDT reserved)
-    const availableBalance = virtualBalance - RESERVED_BALANCE;
+    // Check balance (with 12 USDT reserved + reserved liquidity for pending trades)
+    const availableBalance = virtualBalance - RESERVED_BALANCE - reservedLiquidity;
     if (availableBalance < MIN_BALANCE_FOR_TRADE) {
-      addLogEntry(`[رفض_الصفقة] الرصيد المتاح غير كافٍ (${availableBalance.toFixed(2)} USDT) - يجب أن يكون ${MIN_BALANCE_FOR_TRADE} USDT على الأقل (محجوز: ${RESERVED_BALANCE} USDT)`, 'error');
+      addLogEntry(`[رفض_الصفقة] الرصيد المتاح غير كافٍ (${availableBalance.toFixed(2)} USDT) - محجوز: ${reservedLiquidity.toFixed(0)} USDT`, 'error');
       return;
     }
 
@@ -259,6 +343,9 @@ export const usePaperTrading = (
         id: pendingId,
         opportunity,
         detectedAt: new Date(),
+        executionStatus: 'idle' as ExecutionStatus,
+        retryCount: 0,
+        reservedAmount: 0,
       }]);
       addLogEntry(
         `[انتظار_تأكيد] العملة: ${opportunity.symbol} | السعر: $${parseFloat(opportunity.price).toFixed(6)} | الاستراتيجية: ${opportunity.strategyName} ← اضغط "شراء الآن"`,
@@ -267,8 +354,18 @@ export const usePaperTrading = (
       return;
     }
 
-    // Execute the buy order
-    const success = await executeBuyOrder(opportunity);
+    // Execute with auto-retry
+    const pendingId = crypto.randomUUID();
+    setPendingOpportunities(prev => [...prev, {
+      id: pendingId,
+      opportunity,
+      detectedAt: new Date(),
+      executionStatus: 'buying' as ExecutionStatus,
+      retryCount: 0,
+      reservedAmount: RESERVED_PER_TRADE,
+    }]);
+    
+    const success = await executeWithRetry(opportunity, pendingId);
     if (!success) return;
 
     const fee = TRADE_AMOUNT * (FEE_PERCENT / 100);
@@ -300,25 +397,22 @@ export const usePaperTrading = (
     };
 
     setPositions(prev => [...prev, newPosition]);
-    setVirtualBalance(prev => Math.max(0, prev - TRADE_AMOUNT));
 
     addLogEntry(
       `[شراء] العملة: ${opportunity.symbol} | السعر: $${entryPrice.toFixed(6)} | الكمية: ${quantity.toFixed(4)} | الاستراتيجية: ${opportunity.strategyName}`,
       'success'
     );
-  }, [positions, virtualBalance, setVirtualBalance, addLogEntry, isManualConfirmMode, executeBuyOrder]);
+  }, [positions, virtualBalance, reservedLiquidity, setVirtualBalance, addLogEntry, isManualConfirmMode, executeWithRetry]);
 
-  // Confirm and execute a pending opportunity
+  // Confirm and execute a pending opportunity with auto-retry
   const confirmPendingOpportunity = useCallback(async (pendingId: string) => {
     const pending = pendingOpportunities.find(p => p.id === pendingId);
     if (!pending) return;
+    if (pending.executionStatus === 'buying' || pending.executionStatus === 'retrying') return;
 
-    // Remove from pending list
-    setPendingOpportunities(prev => prev.filter(p => p.id !== pendingId));
-    
-    // Execute with confirmation bypassed
-    await openPosition(pending.opportunity, true);
-  }, [pendingOpportunities, openPosition]);
+    // Execute with auto-retry, keeping the pending entry for status tracking
+    await executeWithRetry(pending.opportunity, pendingId);
+  }, [pendingOpportunities, executeWithRetry]);
 
   // Dismiss a pending opportunity
   const dismissPendingOpportunity = useCallback((pendingId: string) => {

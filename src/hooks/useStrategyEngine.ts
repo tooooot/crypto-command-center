@@ -87,6 +87,9 @@ export const useStrategyEngine = (
         id: pendingId,
         opportunity,
         detectedAt: new Date(),
+        executionStatus: 'idle' as const,
+        retryCount: 0,
+        reservedAmount: 0,
       }]);
       return;
     }
