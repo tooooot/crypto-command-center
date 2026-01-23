@@ -1,4 +1,4 @@
-import { Activity, Wifi, WifiOff, Clock } from 'lucide-react';
+import { Activity, Wifi, WifiOff, Clock, RefreshCw } from 'lucide-react';
 import { ControlPanel } from './ControlPanel';
 import { TopCoin } from './TopCoin';
 import { Position } from '@/hooks/usePaperTrading';
@@ -13,6 +13,9 @@ interface HeaderProps {
   isCheckingServer?: boolean;
   serverConnected?: boolean | null;
   positions: Position[];
+  lastSync?: Date | null;
+  isSyncing?: boolean;
+  serverLatency?: number;
 }
 
 export const Header = ({ 
@@ -24,7 +27,10 @@ export const Header = ({
   onVerifyServer,
   isCheckingServer,
   serverConnected,
-  positions 
+  positions,
+  lastSync,
+  isSyncing,
+  serverLatency = -1,
 }: HeaderProps) => {
   return (
     <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
@@ -39,7 +45,7 @@ export const Header = ({
               مركز قيادة العملات الرقمية
             </h1>
             <p className="text-[10px] text-muted-foreground tracking-widest">
-              v1.7.0-AR | وضع المحطة الطرفية
+              v1.8.0-AR | وضع المزامنة التلقائية
               {isPaused && <span className="text-terminal-amber ms-2">[متوقف]</span>}
             </p>
           </div>
@@ -57,6 +63,24 @@ export const Header = ({
             isCheckingServer={isCheckingServer}
             serverConnected={serverConnected}
           />
+
+          {/* Last Sync Indicator */}
+          <div className="flex items-center gap-2 text-xs border-r border-border pr-4">
+            <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin text-terminal-amber' : 'text-muted-foreground'}`} />
+            <div className="flex flex-col">
+              <span className="text-muted-foreground text-[10px]">آخر مزامنة</span>
+              <span className="text-foreground font-mono text-[11px]">
+                {lastSync
+                  ? lastSync.toLocaleTimeString('ar-SA', { hour12: false })
+                  : '--:--:--'}
+              </span>
+            </div>
+            {serverLatency > 0 && (
+              <span className={`text-[10px] font-mono ${serverLatency < 500 ? 'text-terminal-green' : 'text-terminal-amber'}`}>
+                {serverLatency}ms
+              </span>
+            )}
+          </div>
 
           <div className="flex items-center gap-2 text-xs">
             <Clock className="w-3 h-3 text-muted-foreground" />

@@ -50,6 +50,43 @@ Deno.serve(async (req) => {
       }
     }
     
+    // Full sync endpoint - fetch account info and prices
+    if (action === 'sync') {
+      console.log(`[PROXY] Sync request to ${VULTR_SERVER}/sync`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      try {
+        const response = await fetch(`${VULTR_SERVER}/sync`, {
+          method: 'GET',
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        const data = await response.json();
+        const latency = Date.now() - startTime;
+        
+        console.log(`[PROXY] Sync response - Status: ${response.status}`);
+        console.log(`[PROXY] Account balances: ${data.account?.balances?.length || 0}`);
+        console.log(`[PROXY] Prices: ${data.prices?.length || 0}`);
+        
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            data, 
+            latency, 
+            serverOnline: true 
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (syncError) {
+        clearTimeout(timeoutId);
+        throw syncError;
+      }
+    }
+    
     // Trade execution
     console.log(`[PROXY] Forwarding trade to ${VULTR_SERVER}/api/execute-trade`);
     

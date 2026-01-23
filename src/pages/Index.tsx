@@ -12,6 +12,7 @@ import { useStrategies } from '@/hooks/useStrategies';
 import { useOpportunityRanker } from '@/hooks/useOpportunityRanker';
 import { usePaperTrading } from '@/hooks/usePaperTrading';
 import { useServerConnection } from '@/hooks/useServerConnection';
+import { useAutoSync } from '@/hooks/useAutoSync';
 import { saveSession, getSession, initDB, fullSystemReset, clearLogs } from '@/lib/indexedDB';
 
 const FALLBACK_BALANCE = 100;
@@ -24,6 +25,17 @@ const Index = () => {
   const { logs, addLogEntry, clearAllLogs, reloadLogs } = useEventLog();
   const { coins, loading, error, lastUpdate, refetch, markSymbolInvalid } = useBinanceData(addLogEntry);
   const { results, logStrategyResults } = useStrategies(coins, addLogEntry);
+  
+  // Auto-sync with server every 30 seconds
+  const handleBalanceUpdate = useCallback((balance: number) => {
+    setVirtualBalance(balance);
+    setIsBalanceLoaded(true);
+  }, []);
+  
+  const { syncData, isSyncing, lastSync, serverOnline, latency: serverLatency } = useAutoSync(
+    addLogEntry,
+    handleBalanceUpdate
+  );
   
   // Combine all opportunities for ranking
   const allOpportunities = useMemo(() => {
@@ -221,8 +233,11 @@ const Index = () => {
         onSystemReset={handleSystemReset}
         onVerifyServer={verifyConnection}
         isCheckingServer={isCheckingServer}
-        serverConnected={serverConnected}
+        serverConnected={serverConnected || serverOnline}
         positions={positions}
+        lastSync={lastSync}
+        isSyncing={isSyncing}
+        serverLatency={serverLatency}
       />
 
       <main className="flex-1 container py-4 px-4">
