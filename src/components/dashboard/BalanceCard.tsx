@@ -1,5 +1,14 @@
-import { Wallet, TrendingUp, TrendingDown, DollarSign, Bot } from 'lucide-react';
+import { Wallet, TrendingUp, TrendingDown, DollarSign, Bot, ChevronDown } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
+
+export type StrategyType = 'all' | 'breakout' | 'rsiBounce';
 
 interface BalanceCardProps {
   balance: number;
@@ -11,7 +20,15 @@ interface BalanceCardProps {
   isLive?: boolean;
   autoTrading: boolean;
   onAutoTradingChange: (enabled: boolean) => void;
+  selectedStrategy: StrategyType;
+  onStrategyChange: (strategy: StrategyType) => void;
 }
+
+const STRATEGY_LABELS: Record<StrategyType, string> = {
+  all: 'جميع الاستراتيجيات',
+  breakout: 'استراتيجية الاختراق',
+  rsiBounce: 'استراتيجية الارتداد',
+};
 
 export const BalanceCard = ({
   balance,
@@ -23,6 +40,8 @@ export const BalanceCard = ({
   isLive = true,
   autoTrading,
   onAutoTradingChange,
+  selectedStrategy,
+  onStrategyChange,
 }: BalanceCardProps) => {
   const balanceChange = totalPortfolioValue - initialBalance;
   const balanceChangePercent = ((totalPortfolioValue - initialBalance) / initialBalance) * 100;
@@ -45,7 +64,7 @@ export const BalanceCard = ({
         </span>
       </div>
 
-      {/* Auto-Trading Toggle */}
+      {/* Auto-Trading Toggle with Strategy Dropdown */}
       <div className={`flex items-center justify-between p-3 rounded-xl mb-4 border ${
         autoTrading 
           ? 'bg-terminal-green/10 border-terminal-green/30' 
@@ -62,11 +81,38 @@ export const BalanceCard = ({
             </span>
           </div>
         </div>
-        <Switch
-          checked={autoTrading}
-          onCheckedChange={onAutoTradingChange}
-          className={autoTrading ? 'data-[state=checked]:bg-terminal-green' : ''}
-        />
+        <div className="flex items-center gap-2">
+          {/* Strategy Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-7 text-[10px] px-2 border-border/50 bg-secondary/50"
+              >
+                {STRATEGY_LABELS[selectedStrategy]}
+                <ChevronDown className="w-3 h-3 ms-1" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[160px]">
+              <DropdownMenuItem onClick={() => onStrategyChange('all')}>
+                {STRATEGY_LABELS.all}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onStrategyChange('breakout')}>
+                {STRATEGY_LABELS.breakout}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onStrategyChange('rsiBounce')}>
+                {STRATEGY_LABELS.rsiBounce}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          
+          <Switch
+            checked={autoTrading}
+            onCheckedChange={onAutoTradingChange}
+            className={autoTrading ? 'data-[state=checked]:bg-terminal-green' : ''}
+          />
+        </div>
       </div>
 
       {/* Total Value */}

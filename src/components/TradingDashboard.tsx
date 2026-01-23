@@ -19,6 +19,8 @@ import { initDB, fullSystemReset } from '@/lib/indexedDB';
 const FALLBACK_BALANCE = 100;
 const VIRTUAL_INITIAL_BALANCE = 10000;
 
+import { StrategyType } from '@/components/dashboard/BalanceCard';
+
 export const TradingDashboard = () => {
   const [activeTab, setActiveTab] = useState<'live' | 'virtual'>('live');
   const [liveBalance, setLiveBalance] = useState(FALLBACK_BALANCE);
@@ -26,6 +28,8 @@ export const TradingDashboard = () => {
   const [isBalanceLoaded, setIsBalanceLoaded] = useState(false);
   const [liveAutoTrading, setLiveAutoTrading] = useState(false);
   const [virtualAutoTrading, setVirtualAutoTrading] = useState(false);
+  const [liveStrategy, setLiveStrategy] = useState<StrategyType>('all');
+  const [virtualStrategy, setVirtualStrategy] = useState<StrategyType>('all');
 
   // Shared hooks
   const { logs, addLogEntry, clearAllLogs, reloadLogs } = useEventLog();
@@ -43,10 +47,18 @@ export const TradingDashboard = () => {
     handleBalanceUpdate
   );
 
-  // Combine opportunities
+  // Combine opportunities and filter by selected strategy
   const allOpportunities = useMemo(() => {
     return [...results.breakouts, ...results.rsiBounces];
   }, [results]);
+
+  // Filter opportunities based on selected strategy
+  const getFilteredOpportunities = useCallback((strategy: StrategyType) => {
+    if (strategy === 'all') return allOpportunities;
+    if (strategy === 'breakout') return results.breakouts;
+    if (strategy === 'rsiBounce') return results.rsiBounces;
+    return allOpportunities;
+  }, [allOpportunities, results]);
 
   // Opportunity ranker
   const { rankedOpportunities, goldenOpportunity, logGoldenOpportunity } = useOpportunityRanker(
@@ -135,30 +147,34 @@ export const TradingDashboard = () => {
           const isVirtualAutoEnabled = virtualAutoTrading;
           
           if (!isPaused) {
+            // Get filtered opportunities based on strategy selection
+            const liveFilteredOpps = getFilteredOpportunities(liveStrategy);
+            const virtualFilteredOpps = getFilteredOpportunities(virtualStrategy);
+            
             // Process for LIVE tab
-            if (isLiveAutoEnabled) {
+            if (isLiveAutoEnabled && liveFilteredOpps.length > 0) {
               // Auto mode: skip confirmation (true = execute immediately)
-              liveTradingHook.processOpportunities(allOpportunities, true);
-              addLogEntry(`[آلي:LIVE] تنفيذ فوري لـ ${allOpportunities.length} فرصة`, 'success');
-            } else {
+              liveTradingHook.processOpportunities(liveFilteredOpps, true);
+              addLogEntry(`[آلي:LIVE] تنفيذ فوري لـ ${liveFilteredOpps.length} فرصة`, 'success');
+            } else if (liveFilteredOpps.length > 0) {
               // Manual mode: add to pending (false = require confirmation)
-              liveTradingHook.processOpportunities(allOpportunities, false);
+              liveTradingHook.processOpportunities(liveFilteredOpps, false);
             }
             
             // Process for VIRTUAL tab
-            if (isVirtualAutoEnabled) {
+            if (isVirtualAutoEnabled && virtualFilteredOpps.length > 0) {
               // Auto mode: skip confirmation (true = execute immediately)
-              virtualTradingHook.processOpportunities(allOpportunities, true);
-              addLogEntry(`[آلي:افتراضي] تنفيذ فوري لـ ${allOpportunities.length} فرصة`, 'success');
-            } else {
+              virtualTradingHook.processOpportunities(virtualFilteredOpps, true);
+              addLogEntry(`[آلي:افتراضي] تنفيذ فوري لـ ${virtualFilteredOpps.length} فرصة`, 'success');
+            } else if (virtualFilteredOpps.length > 0) {
               // Manual mode: add to pending (false = require confirmation)
-              virtualTradingHook.processOpportunities(allOpportunities, false);
+              virtualTradingHook.processOpportunities(virtualFilteredOpps, false);
             }
           }
         }
       }
     }
-  }, [coins, lastUpdate, results, allOpportunities, isPaused, liveAutoTrading, virtualAutoTrading, addLogEntry]);
+  }, [coins, lastUpdate, results, allOpportunities, isPaused, liveAutoTrading, virtualAutoTrading, liveStrategy, virtualStrategy, getFilteredOpportunities, addLogEntry]);
 
   // Handle golden opportunity buy
   const handleGoldenBuy = useCallback(() => {
@@ -264,6 +280,8 @@ export const TradingDashboard = () => {
               isLive={true}
               autoTrading={liveAutoTrading}
               onAutoTradingChange={handleLiveAutoTradingChange}
+              selectedStrategy={liveStrategy}
+              onStrategyChange={setLiveStrategy}
             />
 
             {/* Pending Opportunities */}
@@ -303,6 +321,8 @@ export const TradingDashboard = () => {
               isLive={false}
               autoTrading={virtualAutoTrading}
               onAutoTradingChange={handleVirtualAutoTradingChange}
+              selectedStrategy={virtualStrategy}
+              onStrategyChange={setVirtualStrategy}
             />
 
             {/* Pending Opportunities */}
