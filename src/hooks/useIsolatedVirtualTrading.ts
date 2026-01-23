@@ -12,12 +12,8 @@ const MAX_OPEN_POSITIONS = 5; // Per strategy
 const PROFIT_LOCK_THRESHOLD = 3;
 const PROFIT_LOCK_LEVEL = 2;
 
-// Core strategies get 5,000 USDT each (الكنز)
-const CORE_STRATEGY_BALANCE = 5000;
-// Experimental strategies share remaining budget
-const EXPERIMENTAL_STRATEGY_BALANCE = 2500;
-// Scalping gets dedicated capital
-const SCALPING_STRATEGY_BALANCE = 3000;
+// Multi-Portfolio System: Each strategy gets isolated 5,000 USDT
+const UNIFIED_STRATEGY_BALANCE = 5000;
 
 // Strategy configurations
 interface StrategyConfig {
@@ -31,11 +27,11 @@ interface StrategyConfig {
 }
 
 const STRATEGY_CONFIGS: Record<StrategyId, StrategyConfig> = {
-  breakout: { id: 'breakout', label: 'الاختراق', tag: '[الاختراق]', initialBalance: CORE_STRATEGY_BALANCE, isExperimental: false, tradeAmount: VIRTUAL_TRADE_AMOUNT },
-  rsi_bounce: { id: 'rsi_bounce', label: 'الارتداد', tag: '[الارتداد]', initialBalance: CORE_STRATEGY_BALANCE, isExperimental: false, tradeAmount: VIRTUAL_TRADE_AMOUNT },
-  scalping: { id: 'scalping', label: 'النطاق', tag: '[النطاق]', initialBalance: SCALPING_STRATEGY_BALANCE, isExperimental: false, tradeAmount: SCALPING_TRADE_AMOUNT, takeProfitPercent: 1.0 },
-  institutional: { id: 'institutional', label: 'المؤسسي', tag: '[المؤسسي]', initialBalance: EXPERIMENTAL_STRATEGY_BALANCE, isExperimental: true, tradeAmount: VIRTUAL_TRADE_AMOUNT },
-  crossover: { id: 'crossover', label: 'التقاطعات', tag: '[التقاطعات]', initialBalance: EXPERIMENTAL_STRATEGY_BALANCE, isExperimental: true, tradeAmount: VIRTUAL_TRADE_AMOUNT },
+  breakout: { id: 'breakout', label: 'الاختراق S10', tag: '[الاختراق]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: VIRTUAL_TRADE_AMOUNT },
+  rsi_bounce: { id: 'rsi_bounce', label: 'الارتداد S65', tag: '[الارتداد]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: VIRTUAL_TRADE_AMOUNT },
+  scalping: { id: 'scalping', label: 'النطاق S20', tag: '[النطاق]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: SCALPING_TRADE_AMOUNT, takeProfitPercent: 1.0 },
+  institutional: { id: 'institutional', label: 'المؤسسي', tag: '[المؤسسي]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: true, tradeAmount: VIRTUAL_TRADE_AMOUNT },
+  crossover: { id: 'crossover', label: 'التقاطعات', tag: '[التقاطعات]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: true, tradeAmount: VIRTUAL_TRADE_AMOUNT },
 };
 
 // Map StrategyType to StrategyId
@@ -74,37 +70,37 @@ export const useIsolatedVirtualTrading = (
   coins: CoinData[],
   addLogEntry: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void
 ) => {
-  // Separate state for each strategy
+  // Separate state for each strategy - Multi-Portfolio System (5000 USDT each)
   const [breakoutState, setBreakoutState] = useState<Omit<StrategyState, 'processedKeys'>>(() => ({
-    balance: CORE_STRATEGY_BALANCE,
+    balance: UNIFIED_STRATEGY_BALANCE,
     positions: [],
     closedTrades: [],
     pendingOpportunities: [],
   }));
   
   const [rsiBounceState, setRsiBounceState] = useState<Omit<StrategyState, 'processedKeys'>>(() => ({
-    balance: CORE_STRATEGY_BALANCE,
+    balance: UNIFIED_STRATEGY_BALANCE,
     positions: [],
     closedTrades: [],
     pendingOpportunities: [],
   }));
   
   const [scalpingState, setScalpingState] = useState<Omit<StrategyState, 'processedKeys'>>(() => ({
-    balance: SCALPING_STRATEGY_BALANCE,
+    balance: UNIFIED_STRATEGY_BALANCE,
     positions: [],
     closedTrades: [],
     pendingOpportunities: [],
   }));
   
   const [institutionalState, setInstitutionalState] = useState<Omit<StrategyState, 'processedKeys'>>(() => ({
-    balance: EXPERIMENTAL_STRATEGY_BALANCE,
+    balance: UNIFIED_STRATEGY_BALANCE,
     positions: [],
     closedTrades: [],
     pendingOpportunities: [],
   }));
   
   const [crossoverState, setCrossoverState] = useState<Omit<StrategyState, 'processedKeys'>>(() => ({
-    balance: EXPERIMENTAL_STRATEGY_BALANCE,
+    balance: UNIFIED_STRATEGY_BALANCE,
     positions: [],
     closedTrades: [],
     pendingOpportunities: [],
@@ -524,7 +520,7 @@ export const useIsolatedVirtualTrading = (
       reset: resetAll,
       isExperimental: false,
       label: 'الكل',
-      initialBalance: CORE_STRATEGY_BALANCE * 2 + SCALPING_STRATEGY_BALANCE + EXPERIMENTAL_STRATEGY_BALANCE * 2,
+      initialBalance: UNIFIED_STRATEGY_BALANCE * 5, // 5 strategies x 5000 USDT = 25000 USDT total
     };
   }, [
     breakoutState, rsiBounceState, scalpingState, institutionalState, crossoverState,
