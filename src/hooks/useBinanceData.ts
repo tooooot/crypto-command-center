@@ -79,7 +79,7 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
           return true;
         })
         .sort((a: any, b: any) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
-        .slice(0, 100)
+        .slice(0, 250)
         .map((coin: any) => ({
           symbol: coin.symbol.replace('USDT', ''),
           price: coin.lastPrice,
@@ -94,7 +94,7 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
       setCoins(usdtPairs);
       setLastUpdate(new Date());
       setError(null);
-      addLogEntry(`[MAINNET] اكتمل الفحص. تم فهرسة ${usdtPairs.length} أصل بنجاح.`, 'success');
+      addLogEntry(`[MAINNET] اكتمل الفحص. تم فهرسة ${usdtPairs.length} أصل من أفضل 250 بالحجم.`, 'success');
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'خطأ غير معروف';
