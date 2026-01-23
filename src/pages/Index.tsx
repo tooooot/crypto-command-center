@@ -1,7 +1,7 @@
-import TradingDashboard from '@/components/TradingDashboard';
+import StrategyLab from '@/components/StrategyLab';
 
 const Index = () => {
-  return <TradingDashboard />;
+  return <StrategyLab />;
 };
 
 export default Index;
