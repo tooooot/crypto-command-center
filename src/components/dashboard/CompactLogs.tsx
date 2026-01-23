@@ -70,17 +70,28 @@ export const CompactLogs = ({ logs, onClear, diagnosticData, isLive = true }: Co
   };
 
   const handleCopy = async () => {
-    const VERSION = 'v2.0.0-AR';
+    const VERSION = 'v2.3-S20-Only';
     const logsText = logs.map(log => `[${log.timestamp}] ${log.message}`).join('\n');
     
+    // v2.3-S20-Only: Diagnostic bundle shows REAL balance only
     const diagnosticBundle = diagnosticData ? {
       الإصدار: VERSION,
-      الوضع: isLive ? 'حقيقي' : 'افتراضي',
+      الوضع: isLive ? 'حقيقي (LIVE)' : 'افتراضي',
+      المحرك_النشط: 'S20 - النطاق (المحرك الوحيد)',
+      الاستراتيجيات_المعطلة: ['S10 الاختراق', 'S65 الارتداد', 'المؤسسي', 'التقاطعات'],
       الطابع_الزمني: new Date().toISOString(),
       المحفظة: {
         السيولة_المتاحة: `${diagnosticData.virtualBalance.toFixed(2)} USDT`,
         قيمة_العملات: `${diagnosticData.openPositionsValue.toFixed(2)} USDT`,
         القيمة_الإجمالية: `${diagnosticData.totalPortfolioValue.toFixed(2)} USDT`,
+      },
+      إعدادات_الصفقة: {
+        نسبة_الدخول: '40% من الرصيد المتاح',
+        الحد_الأدنى: '10 USDT',
+        الاحتياطي: '5 USDT',
+        عتبة_الشراء_التلقائي: '≥60/100',
+        TP: '1.2%',
+        SL: '0.8%',
       },
       التداول: {
         الصفقات_المفتوحة: `${diagnosticData.openPositions}/10`,
@@ -90,7 +101,7 @@ export const CompactLogs = ({ logs, onClear, diagnosticData, isLive = true }: Co
       },
       المقاييس: {
         إجمالي_العملات_المفحوصة: diagnosticData.totalScanned,
-        الفرص_المكتشفة: diagnosticData.opportunities,
+        فرص_S20_المكتشفة: diagnosticData.opportunities,
       },
     } : null;
 
