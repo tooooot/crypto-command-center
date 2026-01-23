@@ -8,6 +8,7 @@ import { GoldenOpportunity } from '@/components/dashboard/GoldenOpportunity';
 import { OpportunitiesList } from '@/components/dashboard/OpportunitiesList';
 import { PositionsList } from '@/components/dashboard/PositionsList';
 import { CompactLogs } from '@/components/dashboard/CompactLogs';
+import { PortfolioBreakdown } from '@/components/dashboard/PortfolioBreakdown';
 import { useEventLog } from '@/hooks/useEventLog';
 import { useBinanceData } from '@/hooks/useBinanceData';
 import { useStrategies } from '@/hooks/useStrategies';
@@ -83,9 +84,73 @@ export const TradingDashboard = () => {
     [isolatedVirtualTrading, virtualStrategy]
   );
 
+  // Multi-Portfolio breakdown data
+  const portfolioBreakdownData = useMemo(() => [
+    {
+      id: 'breakout',
+      label: 'الاختراق S10',
+      balance: isolatedVirtualTrading.breakout.balance,
+      openPositionsValue: isolatedVirtualTrading.breakout.openPositionsValue,
+      totalPortfolio: isolatedVirtualTrading.breakout.totalPortfolio,
+      pnl: isolatedVirtualTrading.breakout.stats.totalPnL,
+      roi: ((isolatedVirtualTrading.breakout.totalPortfolio - 5000) / 5000) * 100,
+      trades: isolatedVirtualTrading.breakout.stats.totalTrades,
+      winRate: isolatedVirtualTrading.breakout.stats.winRate,
+      isExperimental: false,
+    },
+    {
+      id: 'rsiBounce',
+      label: 'الارتداد S65',
+      balance: isolatedVirtualTrading.rsiBounce.balance,
+      openPositionsValue: isolatedVirtualTrading.rsiBounce.openPositionsValue,
+      totalPortfolio: isolatedVirtualTrading.rsiBounce.totalPortfolio,
+      pnl: isolatedVirtualTrading.rsiBounce.stats.totalPnL,
+      roi: ((isolatedVirtualTrading.rsiBounce.totalPortfolio - 5000) / 5000) * 100,
+      trades: isolatedVirtualTrading.rsiBounce.stats.totalTrades,
+      winRate: isolatedVirtualTrading.rsiBounce.stats.winRate,
+      isExperimental: false,
+    },
+    {
+      id: 'scalping',
+      label: 'النطاق S20',
+      balance: isolatedVirtualTrading.scalping.balance,
+      openPositionsValue: isolatedVirtualTrading.scalping.openPositionsValue,
+      totalPortfolio: isolatedVirtualTrading.scalping.totalPortfolio,
+      pnl: isolatedVirtualTrading.scalping.stats.totalPnL,
+      roi: ((isolatedVirtualTrading.scalping.totalPortfolio - 5000) / 5000) * 100,
+      trades: isolatedVirtualTrading.scalping.stats.totalTrades,
+      winRate: isolatedVirtualTrading.scalping.stats.winRate,
+      isExperimental: false,
+    },
+    {
+      id: 'institutional',
+      label: 'المؤسسي',
+      balance: isolatedVirtualTrading.institutional.balance,
+      openPositionsValue: isolatedVirtualTrading.institutional.openPositionsValue,
+      totalPortfolio: isolatedVirtualTrading.institutional.totalPortfolio,
+      pnl: isolatedVirtualTrading.institutional.stats.totalPnL,
+      roi: ((isolatedVirtualTrading.institutional.totalPortfolio - 5000) / 5000) * 100,
+      trades: isolatedVirtualTrading.institutional.stats.totalTrades,
+      winRate: isolatedVirtualTrading.institutional.stats.winRate,
+      isExperimental: true,
+    },
+    {
+      id: 'crossover',
+      label: 'التقاطعات',
+      balance: isolatedVirtualTrading.crossover.balance,
+      openPositionsValue: isolatedVirtualTrading.crossover.openPositionsValue,
+      totalPortfolio: isolatedVirtualTrading.crossover.totalPortfolio,
+      pnl: isolatedVirtualTrading.crossover.stats.totalPnL,
+      roi: ((isolatedVirtualTrading.crossover.totalPortfolio - 5000) / 5000) * 100,
+      trades: isolatedVirtualTrading.crossover.stats.totalTrades,
+      winRate: isolatedVirtualTrading.crossover.stats.winRate,
+      isExperimental: true,
+    },
+  ], [isolatedVirtualTrading]);
+
   // Get active trading hook based on tab
   const activeBalance = activeTab === 'live' ? liveBalance : virtualData.balance;
-  const activeInitialBalance = activeTab === 'live' ? FALLBACK_BALANCE : (virtualStrategy === 'all' ? 10000 : 5000);
+  const activeInitialBalance = activeTab === 'live' ? FALLBACK_BALANCE : (virtualStrategy === 'all' ? 25000 : 5000);
 
   const lastLoggedUpdate = useRef<string | null>(null);
 
@@ -466,6 +531,14 @@ export const TradingDashboard = () => {
                 </div>
               </div>
             </div>
+
+            {/* Portfolio Breakdown - Show in "All" view */}
+            {virtualStrategy === 'all' && (
+              <PortfolioBreakdown
+                strategies={portfolioBreakdownData}
+                totalCapital={25000}
+              />
+            )}
 
             {/* Pending Opportunities */}
             <OpportunitiesList
