@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, X, History } from 'lucide-react';
+import { TrendingUp, TrendingDown, X, History, Activity, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -106,8 +106,11 @@ const OpenPositionCard = ({ position, onClose }: { position: Position; onClose: 
           <span className="text-foreground">${position.currentPrice.toFixed(4)}</span>
         </div>
         <div>
-          <span className="text-muted-foreground block">الوقف</span>
-          <span className="text-terminal-amber">${position.trailingStopPrice.toFixed(4)}</span>
+          <span className="text-muted-foreground block flex items-center gap-1">
+            <Target className="w-3 h-3 text-terminal-amber" />
+            الوقف ATR
+          </span>
+          <span className="text-terminal-amber">${position.trailingStopPrice.toFixed(4)} ({position.trailingStopPercent?.toFixed(1) || 1}%)</span>
         </div>
         <div className="text-left">
           <span className="text-muted-foreground block">الربح</span>
@@ -117,6 +120,17 @@ const OpenPositionCard = ({ position, onClose }: { position: Position; onClose: 
           </div>
         </div>
       </div>
+
+      {/* Entry Reason - سبب الدخول */}
+      {position.entryReason && (
+        <div className="mt-2 pt-2 border-t border-border/30 text-[10px]">
+          <div className="flex items-center gap-1.5 text-muted-foreground">
+            <Activity className="w-3 h-3 text-terminal-green" />
+            <span>سبب الدخول:</span>
+            <span className="text-foreground">{position.entryReason}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
