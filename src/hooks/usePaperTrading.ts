@@ -59,23 +59,33 @@ const MAX_OPEN_POSITIONS = 10; // Maximum concurrent positions
 const PROFIT_LOCK_THRESHOLD = 3; // Lock profit when PnL > 3%
 const PROFIT_LOCK_LEVEL = 2; // Lock at 2% profit
 
-// Mainnet API Configuration
-const SUPABASE_URL = 'https://lpwhiqtclpiuozxdaipc.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxwd2hpcXRjbHBpdW96eGRhaXBjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwOTgyODQsImV4cCI6MjA4NDY3NDI4NH0.qV4dfR1ccUQokIflxyfQpkmfs_R4p5HOUWrCdHitAPs';
+// Trade API Configuration - Direct to Vultr Server
+const TRADE_API_URL = 'http://108.61.175.57/api/execute-trade';
 
-const callMainnetAPI = async (body: any): Promise<any> => {
+const sendTradeToServer = async (tradeData: {
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  quantity: string;
+  price: string;
+  strategyName: string;
+}): Promise<any> => {
   try {
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/binance-mainnet-trade`, {
+    const response = await fetch(TRADE_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Accept': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(tradeData),
     });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error: ${response.status}`);
+    }
+    
     return await response.json();
   } catch (error) {
-    console.error('Mainnet API error:', error);
+    console.error('Trade API error:', error);
     return { success: false, error: (error as Error).message };
   }
 };
@@ -116,26 +126,27 @@ export const usePaperTrading = (
     const fee = TRADE_AMOUNT * (FEE_PERCENT / 100);
     const quantity = (TRADE_AMOUNT - fee) / entryPrice;
 
-    addLogEntry(`[MAINNET] جاري إرسال أمر شراء ${opportunity.symbol} إلى Binance...`, 'info');
+    addLogEntry(`[TRADE_API] جاري إرسال أمر شراء ${opportunity.symbol} إلى السيرفر...`, 'info');
     
-    const result = await callMainnetAPI({
-      action: 'order',
+    const result = await sendTradeToServer({
       symbol: opportunity.symbol,
       side: 'BUY',
       quantity: quantity.toFixed(6),
+      price: opportunity.price,
+      strategyName: opportunity.strategyName,
     });
 
-    if (result.success && result.data?.orderId) {
+    if (result.success) {
       addLogEntry(
-        `[MAINNET] ✓ تم تنفيذ الشراء | Order ID: ${result.data.orderId}`,
+        `[TRADE_API] ✓ تم إرسال أمر الشراء بنجاح | ${JSON.stringify(result.data || result)}`,
         'success'
       );
       return true;
-    } else if (result.data?.msg?.includes('Invalid symbol')) {
-      addLogEntry(`[MAINNET] ⚠ عملة غير صالحة: ${opportunity.symbol} - تم استبعادها`, 'warning');
+    } else if (result.error?.includes('Invalid symbol')) {
+      addLogEntry(`[TRADE_API] ⚠ عملة غير صالحة: ${opportunity.symbol} - تم استبعادها`, 'warning');
       return false;
     } else {
-      addLogEntry(`[MAINNET] ✗ فشل الشراء: ${result.data?.msg || result.error}`, 'error');
+      addLogEntry(`[TRADE_API] ✗ فشل الشراء: ${result.error || 'خطأ غير معروف'}`, 'error');
       return false;
     }
   }, [addLogEntry]);
@@ -229,23 +240,24 @@ export const usePaperTrading = (
     const pnlPercent = (pnlAmount / position.investedAmount) * 100;
     const isWin = pnlAmount > 0;
 
-    // Send sell order to Binance Mainnet
-    addLogEntry(`[MAINNET] جاري إرسال أمر بيع ${position.symbol} إلى Binance...`, 'info');
+    // Send sell order to Trade API Server
+    addLogEntry(`[TRADE_API] جاري إرسال أمر بيع ${position.symbol} إلى السيرفر...`, 'info');
     
-    const result = await callMainnetAPI({
-      action: 'order',
+    const result = await sendTradeToServer({
       symbol: position.symbol,
       side: 'SELL',
       quantity: position.quantity.toFixed(6),
+      price: currentPrice.toString(),
+      strategyName: position.strategyName,
     });
 
-    if (result.success && result.data?.orderId) {
+    if (result.success) {
       addLogEntry(
-        `[MAINNET] ✓ تم تنفيذ البيع | Order ID: ${result.data.orderId}`,
+        `[TRADE_API] ✓ تم إرسال أمر البيع بنجاح | ${JSON.stringify(result.data || result)}`,
         'success'
       );
-    } else if (result.data?.msg) {
-      addLogEntry(`[MAINNET] ⚠ رد Binance: ${result.data.msg}`, 'warning');
+    } else if (result.error) {
+      addLogEntry(`[TRADE_API] ⚠ خطأ: ${result.error}`, 'warning');
     }
 
     const closedTrade: ClosedTrade = {
