@@ -58,123 +58,155 @@ export interface PerformanceStats {
   totalTrades: number;
 }
 
-// v2.1-Live: Unified trade amount - 1000 USDT per trade
-const TRADE_AMOUNT = 1000; // 1000 USDT per trade
+// v2.2-Live: Dynamic Position Sizing (Percentage-Based)
+const TRADE_PERCENT = 40; // 40% of available balance per trade
+const MIN_TRADE_AMOUNT = 10; // Binance minimum: 10 USDT
+const RESERVED_BALANCE = 5; // Reserve 5 USDT for fees
 const DEFAULT_TRAILING_STOP_PERCENT = 1; // 1% trailing stop (default)
 const FEE_PERCENT = 0.1; // 0.1% fee per transaction
 const SLIPPAGE_PERCENT = 0.2; // 0.2% slippage tolerance for market orders
-const RESERVED_BALANCE = 12; // Reserve 12 USDT from total balance
-const MIN_BALANCE_FOR_TRADE = 1000; // Minimum 1000 USDT
 const MAX_OPEN_POSITIONS = 10; // Maximum concurrent positions
 const PROFIT_LOCK_THRESHOLD = 3; // Lock profit when PnL > 3%
 const PROFIT_LOCK_LEVEL = 2; // Lock at 2% profit
-const RESERVED_PER_TRADE = 1000; // Reserve 1000 USDT per pending trade
-const UNIVERSAL_AUTO_BUY_THRESHOLD = 60; // v2.1-Live: Any score >= 60 = instant buy
-const MAX_RETRY_ATTEMPTS = 6; // Max retry attempts (30 seconds total)
-const RETRY_INTERVAL = 5000; // 5 seconds between retries
+const UNIVERSAL_AUTO_BUY_THRESHOLD = 60; // v2.2-Live: Any score >= 60 = instant buy
+const MAX_RETRY_ATTEMPTS = 3; // Max retry attempts (9 seconds total)
+const RETRY_INTERVAL = 3000; // 3 seconds between retries
+const API_TIMEOUT = 3000; // 3 second timeout for all API calls
 
-// Trade API Configuration - Via Edge Function Proxy
+// Binance Mainnet API Configuration - Direct Connection
 const SUPABASE_URL = 'https://lpwhiqtclpiuozxdaipc.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxwd2hpcXRjbHBpdW96eGRhaXBjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwOTgyODQsImV4cCI6MjA4NDY3NDI4NH0.qV4dfR1ccUQokIflxyfQpkmfs_R4p5HOUWrCdHitAPs';
-const PROXY_ENDPOINT = `${SUPABASE_URL}/functions/v1/trade-proxy`;
+const BINANCE_MAINNET_ENDPOINT = `${SUPABASE_URL}/functions/v1/binance-mainnet-trade`;
 
-// Server Health Check (Handshake)
-const checkServerHealth = async (): Promise<{ online: boolean; latency: number }> => {
+// Calculate dynamic trade amount based on current balance
+const calculateTradeAmount = (balance: number): number => {
+  const available = balance - RESERVED_BALANCE;
+  if (available < MIN_TRADE_AMOUNT) return 0;
+  const percentAmount = (available * TRADE_PERCENT) / 100;
+  return Math.max(MIN_TRADE_AMOUNT, percentAmount);
+};
+
+// Fetch with timeout helper
+const fetchWithTimeout = async (url: string, options: RequestInit, timeout: number = API_TIMEOUT): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+};
+
+// Check Binance Mainnet connection and get balance
+const checkMainnetHealth = async (): Promise<{ online: boolean; latency: number; balance?: number }> => {
   const requestId = Date.now().toString(36).toUpperCase();
-  console.log(`[HEALTH:${requestId}] ════════════════════════════════════`);
-  console.log(`[HEALTH:${requestId}] HANDSHAKE REQUEST`);
-  console.log(`[HEALTH:${requestId}] Time: ${new Date().toISOString()}`);
-  console.log(`[HEALTH:${requestId}] Endpoint: ${PROXY_ENDPOINT}`);
+  console.log(`[v2.2-Live:HEALTH:${requestId}] ════════════════════════════════════`);
+  console.log(`[v2.2-Live:HEALTH:${requestId}] BINANCE MAINNET CONNECTION TEST`);
+  console.log(`[v2.2-Live:HEALTH:${requestId}] Time: ${new Date().toISOString()}`);
+  console.log(`[v2.2-Live:HEALTH:${requestId}] Endpoint: ${BINANCE_MAINNET_ENDPOINT}`);
   
   const startTime = performance.now();
   
   try {
-    const response = await fetch(PROXY_ENDPOINT, {
+    const response = await fetchWithTimeout(BINANCE_MAINNET_ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify({ action: 'health' }),
+      body: JSON.stringify({ action: 'balance' }),
     });
     
     const elapsed = Math.round(performance.now() - startTime);
     const data = await response.json();
     
-    console.log(`[HEALTH:${requestId}] RESPONSE RECEIVED`);
-    console.log(`[HEALTH:${requestId}] Status: ${response.status}`);
-    console.log(`[HEALTH:${requestId}] Online: ${data.serverOnline}`);
-    console.log(`[HEALTH:${requestId}] Latency: ${elapsed}ms`);
-    console.log(`[HEALTH:${requestId}] Data:`, JSON.stringify(data, null, 2));
-    console.log(`[HEALTH:${requestId}] ════════════════════════════════════`);
+    console.log(`[v2.2-Live:HEALTH:${requestId}] RESPONSE RECEIVED`);
+    console.log(`[v2.2-Live:HEALTH:${requestId}] Status: ${response.status}`);
+    console.log(`[v2.2-Live:HEALTH:${requestId}] Success: ${data.success}`);
+    console.log(`[v2.2-Live:HEALTH:${requestId}] Balance: ${data.data?.balance} USDT`);
+    console.log(`[v2.2-Live:HEALTH:${requestId}] Latency: ${elapsed}ms`);
+    console.log(`[v2.2-Live:HEALTH:${requestId}] ════════════════════════════════════`);
     
     return { 
-      online: data.success && data.serverOnline, 
-      latency: elapsed
+      online: data.success, 
+      latency: elapsed,
+      balance: data.data?.balance,
     };
   } catch (error) {
     const elapsed = Math.round(performance.now() - startTime);
-    console.error(`[HEALTH:${requestId}] ERROR`);
-    console.error(`[HEALTH:${requestId}] Elapsed: ${elapsed}ms`);
-    console.error(`[HEALTH:${requestId}] Message: ${(error as Error).message}`);
-    console.error(`[HEALTH:${requestId}] ════════════════════════════════════`);
+    const isTimeout = (error as Error).name === 'AbortError';
+    console.error(`[v2.2-Live:HEALTH:${requestId}] ${isTimeout ? 'TIMEOUT' : 'ERROR'}`);
+    console.error(`[v2.2-Live:HEALTH:${requestId}] Elapsed: ${elapsed}ms`);
+    console.error(`[v2.2-Live:HEALTH:${requestId}] Message: ${(error as Error).message}`);
+    console.error(`[v2.2-Live:HEALTH:${requestId}] ════════════════════════════════════`);
     return { online: false, latency: elapsed };
   }
 };
 
-// Send trade via Edge Function Proxy with Detailed Logging
-const sendTradeToServer = async (tradeData: {
+// Send trade directly to Binance Mainnet via Edge Function
+const sendTradeToMainnet = async (tradeData: {
   symbol: string;
   side: 'BUY' | 'SELL';
   quantity: string;
-  price: string;
-  strategyName: string;
 }): Promise<any> => {
   const requestId = Date.now().toString(36).toUpperCase();
   const startTime = performance.now();
   
   // === REQUEST SENT ===
-  console.log(`[TRADE:${requestId}] ════════════════════════════════════`);
-  console.log(`[TRADE:${requestId}] REQUEST SENT`);
-  console.log(`[TRADE:${requestId}] Time: ${new Date().toISOString()}`);
-  console.log(`[TRADE:${requestId}] Endpoint: ${PROXY_ENDPOINT}`);
-  console.log(`[TRADE:${requestId}] Payload:`, JSON.stringify(tradeData, null, 2));
-  console.log(`[TRADE:${requestId}] ────────────────────────────────────`);
+  console.log(`[v2.2-Live:TRADE:${requestId}] ════════════════════════════════════`);
+  console.log(`[v2.2-Live:TRADE:${requestId}] BINANCE MAINNET ORDER`);
+  console.log(`[v2.2-Live:TRADE:${requestId}] Time: ${new Date().toISOString()}`);
+  console.log(`[v2.2-Live:TRADE:${requestId}] Endpoint: ${BINANCE_MAINNET_ENDPOINT}`);
+  console.log(`[v2.2-Live:TRADE:${requestId}] Payload:`, JSON.stringify(tradeData, null, 2));
+  console.log(`[v2.2-Live:TRADE:${requestId}] ────────────────────────────────────`);
   
   try {
-    const response = await fetch(PROXY_ENDPOINT, {
+    const response = await fetchWithTimeout(BINANCE_MAINNET_ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify({ action: 'trade', ...tradeData }),
+      body: JSON.stringify({ 
+        action: 'order',
+        symbol: tradeData.symbol,
+        side: tradeData.side,
+        quantity: tradeData.quantity,
+      }),
     });
     
     const elapsed = Math.round(performance.now() - startTime);
     const data = await response.json();
     
     // === RESPONSE RECEIVED ===
-    console.log(`[TRADE:${requestId}] RESPONSE RECEIVED`);
-    console.log(`[TRADE:${requestId}] Status Code: ${response.status}`);
-    console.log(`[TRADE:${requestId}] Elapsed: ${elapsed}ms`);
-    console.log(`[TRADE:${requestId}] Success: ${data.success}`);
-    console.log(`[TRADE:${requestId}] Data:`, JSON.stringify(data, null, 2));
-    console.log(`[TRADE:${requestId}] ════════════════════════════════════`);
+    console.log(`[v2.2-Live:TRADE:${requestId}] RESPONSE RECEIVED`);
+    console.log(`[v2.2-Live:TRADE:${requestId}] Status Code: ${response.status}`);
+    console.log(`[v2.2-Live:TRADE:${requestId}] Elapsed: ${elapsed}ms`);
+    console.log(`[v2.2-Live:TRADE:${requestId}] Success: ${data.success}`);
+    console.log(`[v2.2-Live:TRADE:${requestId}] Order ID: ${data.data?.orderId || 'N/A'}`);
+    console.log(`[v2.2-Live:TRADE:${requestId}] Data:`, JSON.stringify(data, null, 2));
+    console.log(`[v2.2-Live:TRADE:${requestId}] ════════════════════════════════════`);
     
-    return { ...data, latency: elapsed };
+    return { ...data, latency: elapsed, orderId: data.data?.orderId };
     
   } catch (error) {
     const elapsed = Math.round(performance.now() - startTime);
+    const isTimeout = (error as Error).name === 'AbortError';
     
     // === ERROR ===
-    console.error(`[TRADE:${requestId}] ERROR DETAILS`);
-    console.error(`[TRADE:${requestId}] Elapsed: ${elapsed}ms`);
-    console.error(`[TRADE:${requestId}] Message: ${(error as Error).message}`);
-    console.error(`[TRADE:${requestId}] Stack: ${(error as Error).stack}`);
-    console.error(`[TRADE:${requestId}] ════════════════════════════════════`);
+    console.error(`[v2.2-Live:TRADE:${requestId}] ${isTimeout ? 'TIMEOUT' : 'ERROR'}`);
+    console.error(`[v2.2-Live:TRADE:${requestId}] Elapsed: ${elapsed}ms`);
+    console.error(`[v2.2-Live:TRADE:${requestId}] Message: ${(error as Error).message}`);
+    console.error(`[v2.2-Live:TRADE:${requestId}] ════════════════════════════════════`);
     
-    return { success: false, error: (error as Error).message, latency: elapsed };
+    return { success: false, error: isTimeout ? 'Timeout (3s)' : (error as Error).message, latency: elapsed };
   }
 };
 
@@ -208,83 +240,88 @@ export const usePaperTrading = (
     totalTrades: closedTrades.length,
   };
 
-  // Execute a buy order with Handshake
-  const executeBuyOrder = useCallback(async (opportunity: StrategyResult): Promise<boolean> => {
-    // Step 1: Handshake - Check server health
-    addLogEntry(`[HANDSHAKE] جاري التحقق من اتصال السيرفر...`, 'info');
-    const health = await checkServerHealth();
+  // Execute a buy order via Binance Mainnet
+  const executeBuyOrder = useCallback(async (opportunity: StrategyResult, tradeAmount: number): Promise<{ success: boolean; orderId?: number }> => {
+    // Step 1: Check Binance Mainnet connection and balance
+    addLogEntry(`[v2.2-Live:MAINNET] جاري الاتصال بـ Binance Mainnet...`, 'info');
+    const health = await checkMainnetHealth();
     
     if (!health.online) {
-      addLogEntry(`[HANDSHAKE] ✗ السيرفر غير متاح! Latency: ${health.latency}ms`, 'error');
-      return false;
+      addLogEntry(`[v2.2-Live:MAINNET] ✗ غير متاح! Latency: ${health.latency}ms`, 'error');
+      return { success: false };
     }
     
-    addLogEntry(`[HANDSHAKE] ✓ السيرفر متصل | Latency: ${health.latency}ms`, 'success');
+    addLogEntry(`[v2.2-Live:MAINNET] ✓ متصل | الرصيد الحقيقي: ${health.balance?.toFixed(2) || '??'} USDT | Latency: ${health.latency}ms`, 'success');
     
     // Step 2: Execute trade with slippage tolerance
     const entryPrice = parseFloat(opportunity.price);
     const priceWithSlippage = entryPrice * (1 + SLIPPAGE_PERCENT / 100); // 0.2% slippage for market order
-    const fee = TRADE_AMOUNT * (FEE_PERCENT / 100);
-    const quantity = (TRADE_AMOUNT - fee) / priceWithSlippage;
+    const fee = tradeAmount * (FEE_PERCENT / 100);
+    const quantity = (tradeAmount - fee) / priceWithSlippage;
 
-    addLogEntry(`[v2.1-Live][TRADE] ${opportunity.symbol} | سعر السوق: $${entryPrice.toFixed(6)} | Slippage 0.2%: $${priceWithSlippage.toFixed(6)} | مبلغ: ${TRADE_AMOUNT} USDT`, 'info');
+    addLogEntry(`[v2.2-Live:ORDER] ${opportunity.symbol} | سعر: $${entryPrice.toFixed(6)} | Slippage 0.2%: $${priceWithSlippage.toFixed(6)} | مبلغ: ${tradeAmount.toFixed(2)} USDT | كمية: ${quantity.toFixed(4)}`, 'info');
     
-    const result = await sendTradeToServer({
+    const result = await sendTradeToMainnet({
       symbol: opportunity.symbol,
       side: 'BUY',
       quantity: quantity.toFixed(6),
-      price: priceWithSlippage.toFixed(8),
-      strategyName: opportunity.strategyName,
     });
 
     if (result.success) {
       addLogEntry(
-        `[TRADE_API] ✓ تم الإرسال بنجاح (${result.latency}ms) | ${JSON.stringify(result.data || {})}`,
+        `[v2.2-Live:SUCCESS] ✓ تم تنفيذ الأمر (${result.latency}ms) | Order ID: ${result.orderId || 'N/A'}`,
         'success'
       );
-      return true;
-    } else if (result.error?.includes('Invalid symbol')) {
-      addLogEntry(`[TRADE_API] ⚠ عملة غير صالحة: ${opportunity.symbol}`, 'warning');
-      return false;
+      return { success: true, orderId: result.orderId };
+    } else if (result.error?.includes('Invalid symbol') || result.error?.includes('LOT_SIZE')) {
+      addLogEntry(`[v2.2-Live:REJECT] ⚠ عملة غير صالحة أو كمية غير مقبولة: ${opportunity.symbol}`, 'warning');
+      return { success: false };
     } else {
-      addLogEntry(`[TRADE_API] ✗ فشل الشراء: ${result.error || 'خطأ غير معروف'}`, 'error');
-      return false;
+      addLogEntry(`[v2.2-Live:FAIL] ✗ فشل الشراء: ${result.error || 'خطأ غير معروف'}`, 'error');
+      return { success: false };
     }
   }, [addLogEntry]);
 
   // Reserved amount tracking for pending trades
   const [reservedLiquidity, setReservedLiquidity] = useState(0);
 
-  // Execute with auto-retry logic
+  // Execute with auto-retry logic (v2.2-Live: Dynamic sizing)
   const executeWithRetry = useCallback(async (
     opportunity: StrategyResult,
     pendingId?: string,
     currentRetry: number = 0
-  ): Promise<boolean> => {
+  ): Promise<{ success: boolean; tradeAmount: number; orderId?: number }> => {
+    // Calculate dynamic trade amount
+    const tradeAmount = calculateTradeAmount(virtualBalance);
+    
+    if (tradeAmount <= 0) {
+      addLogEntry(`[v2.2-Live:رفض] الرصيد غير كافٍ للتداول (${virtualBalance.toFixed(2)} USDT) - الحد الأدنى: ${MIN_TRADE_AMOUNT} USDT`, 'error');
+      return { success: false, tradeAmount: 0 };
+    }
+
     // Reserve liquidity on first attempt
-    if (currentRetry === 0 && virtualBalance >= RESERVED_PER_TRADE) {
-      setReservedLiquidity(prev => prev + RESERVED_PER_TRADE);
-      setVirtualBalance(prev => prev - RESERVED_PER_TRADE);
-      addLogEntry(`[حجز_سيولة] تم حجز ${RESERVED_PER_TRADE} USDT لشراء ${opportunity.symbol}`, 'info');
+    if (currentRetry === 0) {
+      setReservedLiquidity(prev => prev + tradeAmount);
+      setVirtualBalance(prev => prev - tradeAmount);
+      addLogEntry(`[v2.2-Live:حجز] تم حجز ${tradeAmount.toFixed(2)} USDT لشراء ${opportunity.symbol}`, 'info');
     }
 
     // Update pending status
     if (pendingId) {
       setPendingOpportunities(prev => prev.map(p => 
         p.id === pendingId 
-          ? { ...p, executionStatus: (currentRetry > 0 ? 'retrying' : 'buying') as ExecutionStatus, retryCount: currentRetry, reservedAmount: RESERVED_PER_TRADE }
+          ? { ...p, executionStatus: (currentRetry > 0 ? 'retrying' : 'buying') as ExecutionStatus, retryCount: currentRetry, reservedAmount: tradeAmount }
           : p
       ));
     }
 
-    addLogEntry(`[تنفيذ${currentRetry > 0 ? `:محاولة ${currentRetry + 1}` : ''}] جاري شراء ${opportunity.symbol}...`, 'info');
+    addLogEntry(`[v2.2-Live:تنفيذ${currentRetry > 0 ? `:محاولة ${currentRetry + 1}` : ''}] جاري شراء ${opportunity.symbol} بـ ${tradeAmount.toFixed(2)} USDT...`, 'info');
     
-    const success = await executeBuyOrder(opportunity);
+    const result = await executeBuyOrder(opportunity, tradeAmount);
     
-    if (success) {
-      // Release reservation and deduct actual trade amount
-      setReservedLiquidity(prev => Math.max(0, prev - RESERVED_PER_TRADE));
-      setVirtualBalance(prev => prev + RESERVED_PER_TRADE - TRADE_AMOUNT);
+    if (result.success) {
+      // Trade successful - keep the deducted amount
+      setReservedLiquidity(prev => Math.max(0, prev - tradeAmount));
       
       if (pendingId) {
         setPendingOpportunities(prev => prev.map(p => 
@@ -295,12 +332,12 @@ export const usePaperTrading = (
           setPendingOpportunities(prev => prev.filter(p => p.id !== pendingId));
         }, 3000);
       }
-      return true;
+      return { success: true, tradeAmount, orderId: result.orderId };
     }
     
     // Failed - check if we should retry
     if (currentRetry < MAX_RETRY_ATTEMPTS) {
-      addLogEntry(`[إعادة_محاولة] فشل شراء ${opportunity.symbol} - إعادة المحاولة خلال 5 ثوانٍ (${currentRetry + 1}/${MAX_RETRY_ATTEMPTS})`, 'warning');
+      addLogEntry(`[v2.2-Live:إعادة] فشل شراء ${opportunity.symbol} - إعادة المحاولة خلال 3 ثوانٍ (${currentRetry + 1}/${MAX_RETRY_ATTEMPTS})`, 'warning');
       
       if (pendingId) {
         setPendingOpportunities(prev => prev.map(p => 
@@ -314,9 +351,9 @@ export const usePaperTrading = (
     }
     
     // Final failure - release reserved liquidity
-    setReservedLiquidity(prev => Math.max(0, prev - RESERVED_PER_TRADE));
-    setVirtualBalance(prev => prev + RESERVED_PER_TRADE);
-    addLogEntry(`[تحرير_سيولة] تم إرجاع ${RESERVED_PER_TRADE} USDT بعد فشل نهائي لـ ${opportunity.symbol}`, 'warning');
+    setReservedLiquidity(prev => Math.max(0, prev - tradeAmount));
+    setVirtualBalance(prev => prev + tradeAmount);
+    addLogEntry(`[v2.2-Live:تحرير] تم إرجاع ${tradeAmount.toFixed(2)} USDT بعد فشل نهائي لـ ${opportunity.symbol}`, 'warning');
     
     if (pendingId) {
       setPendingOpportunities(prev => prev.map(p => 
@@ -324,7 +361,7 @@ export const usePaperTrading = (
       ));
     }
     
-    return false;
+    return { success: false, tradeAmount: 0 };
   }, [executeBuyOrder, virtualBalance, setVirtualBalance, addLogEntry]);
 
   // Open a new position (with or without manual confirmation)
@@ -333,10 +370,12 @@ export const usePaperTrading = (
     const existingPosition = positions.find(p => p.symbol === opportunity.symbol);
     if (existingPosition) return;
 
-    // Check balance (with 12 USDT reserved + reserved liquidity for pending trades)
+    // v2.2-Live: Check if we have enough balance for minimum trade
     const availableBalance = virtualBalance - RESERVED_BALANCE - reservedLiquidity;
-    if (availableBalance < MIN_BALANCE_FOR_TRADE) {
-      addLogEntry(`[رفض_الصفقة] الرصيد المتاح غير كافٍ (${availableBalance.toFixed(2)} USDT) - محجوز: ${reservedLiquidity.toFixed(0)} USDT`, 'error');
+    const estimatedTradeAmount = calculateTradeAmount(availableBalance);
+    
+    if (estimatedTradeAmount <= 0) {
+      addLogEntry(`[v2.2-Live:رفض] الرصيد غير كافٍ (${availableBalance.toFixed(2)} USDT) - الحد الأدنى: ${MIN_TRADE_AMOUNT} USDT`, 'error');
       return;
     }
 
@@ -352,7 +391,7 @@ export const usePaperTrading = (
         reservedAmount: 0,
       }]);
       addLogEntry(
-        `[انتظار_تأكيد] العملة: ${opportunity.symbol} | السعر: $${parseFloat(opportunity.price).toFixed(6)} | الاستراتيجية: ${opportunity.strategyName} ← اضغط "شراء الآن"`,
+        `[انتظار_تأكيد] العملة: ${opportunity.symbol} | السعر: $${parseFloat(opportunity.price).toFixed(6)} | المبلغ المقدر: ${estimatedTradeAmount.toFixed(2)} USDT ← اضغط "شراء الآن"`,
         'warning'
       );
       return;
@@ -366,15 +405,16 @@ export const usePaperTrading = (
       detectedAt: new Date(),
       executionStatus: 'buying' as ExecutionStatus,
       retryCount: 0,
-      reservedAmount: RESERVED_PER_TRADE,
+      reservedAmount: estimatedTradeAmount,
     }]);
     
-    const success = await executeWithRetry(opportunity, pendingId);
-    if (!success) return;
+    const result = await executeWithRetry(opportunity, pendingId);
+    if (!result.success) return;
 
-    const fee = TRADE_AMOUNT * (FEE_PERCENT / 100);
+    const tradeAmount = result.tradeAmount;
+    const fee = tradeAmount * (FEE_PERCENT / 100);
     const entryPrice = parseFloat(opportunity.price);
-    const quantity = (TRADE_AMOUNT - fee) / entryPrice;
+    const quantity = (tradeAmount - fee) / entryPrice;
     
     // Use dynamic trailing stop from opportunity ATR, or default
     const trailingStopPercent = opportunity.atr 
@@ -387,8 +427,9 @@ export const usePaperTrading = (
       symbol: opportunity.symbol,
       entryPrice,
       currentPrice: entryPrice,
+      binanceOrderId: result.orderId,
       quantity,
-      investedAmount: TRADE_AMOUNT,
+      investedAmount: tradeAmount,
       highestPrice: entryPrice,
       trailingStopPrice,
       trailingStopPercent,
@@ -403,7 +444,7 @@ export const usePaperTrading = (
     setPositions(prev => [...prev, newPosition]);
 
     addLogEntry(
-      `[شراء] العملة: ${opportunity.symbol} | السعر: $${entryPrice.toFixed(6)} | الكمية: ${quantity.toFixed(4)} | الاستراتيجية: ${opportunity.strategyName}`,
+      `[v2.2-Live:شراء] ✓ ${opportunity.symbol} | السعر: $${entryPrice.toFixed(6)} | الكمية: ${quantity.toFixed(4)} | المبلغ: ${tradeAmount.toFixed(2)} USDT`,
       'success'
     );
   }, [positions, virtualBalance, reservedLiquidity, setVirtualBalance, addLogEntry, isManualConfirmMode, executeWithRetry]);
@@ -424,7 +465,7 @@ export const usePaperTrading = (
     addLogEntry(`[رفض_يدوي] تم تجاهل الفرصة`, 'info');
   }, [addLogEntry]);
 
-  // Close a position
+  // Close a position via Binance Mainnet
   const closePosition = useCallback(async (position: Position, currentPrice: number, reason: string) => {
     const exitFee = (position.quantity * currentPrice) * (FEE_PERCENT / 100);
     const grossValue = position.quantity * currentPrice;
@@ -433,24 +474,22 @@ export const usePaperTrading = (
     const pnlPercent = (pnlAmount / position.investedAmount) * 100;
     const isWin = pnlAmount > 0;
 
-    // Send sell order via Proxy
-    addLogEntry(`[TRADE_API] جاري إرسال أمر بيع ${position.symbol}...`, 'info');
+    // Send sell order via Binance Mainnet
+    addLogEntry(`[v2.2-Live:SELL] جاري إرسال أمر بيع ${position.symbol}...`, 'info');
     
-    const result = await sendTradeToServer({
+    const result = await sendTradeToMainnet({
       symbol: position.symbol,
       side: 'SELL',
       quantity: position.quantity.toFixed(6),
-      price: currentPrice.toString(),
-      strategyName: position.strategyName,
     });
 
     if (result.success) {
       addLogEntry(
-        `[TRADE_API] ✓ تم إرسال أمر البيع (${result.latency}ms)`,
+        `[v2.2-Live:SELL] ✓ تم تنفيذ أمر البيع (${result.latency}ms) | Order ID: ${result.orderId || 'N/A'}`,
         'success'
       );
     } else if (result.error) {
-      addLogEntry(`[TRADE_API] ⚠ خطأ: ${result.error}`, 'warning');
+      addLogEntry(`[v2.2-Live:SELL] ⚠ خطأ: ${result.error}`, 'warning');
     }
 
     const closedTrade: ClosedTrade = {
@@ -586,12 +625,13 @@ export const usePaperTrading = (
       const opportunityKey = `${opportunity.symbol}-${opportunity.strategy}`;
       
       if (!processedOpportunities.current.has(opportunityKey)) {
-        // v2.1-Live: Universal Auto-Buy - ANY score >= 60 = instant execution
+        // v2.2-Live: Universal Auto-Buy - ANY score >= 60 = instant execution
         const opportunityScore = opportunity.score || 0;
         const shouldAutoExecute = opportunityScore >= UNIVERSAL_AUTO_BUY_THRESHOLD;
+        const estimatedAmount = calculateTradeAmount(virtualBalance);
         
-        if (shouldAutoExecute) {
-          addLogEntry(`[v2.1-Live][تنفيذ_فوري] ${opportunity.symbol} | تقييم: ${opportunityScore}/100 ≥ 60 | المبلغ: ${TRADE_AMOUNT} USDT`, 'success');
+        if (shouldAutoExecute && estimatedAmount > 0) {
+          addLogEntry(`[v2.2-Live:تنفيذ_فوري] ${opportunity.symbol} | تقييم: ${opportunityScore}/100 ≥ 60 | المبلغ: ${estimatedAmount.toFixed(2)} USDT (${TRADE_PERCENT}% من الرصيد)`, 'success');
         }
         
         // Execute immediately if score >= 60 OR auto-trading is ON
@@ -604,7 +644,7 @@ export const usePaperTrading = (
         }, 60000);
       }
     }
-  }, [positions.length, openPosition, addLogEntry]);
+  }, [positions.length, virtualBalance, openPosition, addLogEntry]);
 
   // Manual close position
   const manualClosePosition = useCallback((positionId: string) => {
