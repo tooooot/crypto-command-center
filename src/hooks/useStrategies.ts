@@ -156,11 +156,11 @@ export const useStrategies = (
       // 📊 SCALPING STRATEGY (النطاق) - S20: Low Volatility Range Trading
       // ═══════════════════════════════════════════════════════════════
       
-      // Conditions: Very low volatility (<1.5%) + RSI bouncing from 35 area
-      // Take Profit: 0.8% - 1.2% (quick scalps)
-      if (volatilityPercent < 1.5 && rsiValue >= 33 && rsiValue <= 42 && changePercent > 0.1 && changePercent < 1) {
-        const takeProfitPercent = 0.8 + (volatilityPercent * 0.3); // Dynamic TP based on volatility (0.8% - 1.2%)
-        const entryReason = `نطاق ضيق | تذبذب ${volatilityPercent.toFixed(2)}% | RSI ارتداد ${rsiValue.toFixed(0)} | هدف ${takeProfitPercent.toFixed(1)}%`;
+      // Conditions: Very low volatility (<1.5%) + RSI bouncing from 35 area + Volume > $10M
+      // Take Profit: 1.2% fixed, Stop Loss: 0.8% for fast turnover
+      if (volatilityPercent < 1.5 && rsiValue >= 33 && rsiValue <= 42 && changePercent > 0.1 && changePercent < 1 && volume24h >= 10000000) {
+        const takeProfitPercent = 1.2; // Fixed 1.2% TP for fast turnover
+        const entryReason = `نطاق ضيق | حجم $${(volume24h / 1000000).toFixed(0)}M | تذبذب ${volatilityPercent.toFixed(2)}% | RSI ${rsiValue.toFixed(0)} | TP:1.2% SL:0.8%`;
         scalpings.push({
           symbol: coin.symbol,
           price: coin.price,

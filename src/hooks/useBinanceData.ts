@@ -114,11 +114,11 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
   useEffect(() => {
     fetchData();
     
-    // Refresh every 30 seconds
+    // Refresh every 5 seconds for S20 priority scanning
     const interval = setInterval(() => {
-      addLogEntry('بدء دورة التحديث التلقائي...', 'info');
+      addLogEntry('[S20-5s] بدء دورة التحديث السريع...', 'info');
       fetchData();
-    }, 30000);
+    }, 5000);
 
     return () => clearInterval(interval);
   }, [fetchData, addLogEntry]);

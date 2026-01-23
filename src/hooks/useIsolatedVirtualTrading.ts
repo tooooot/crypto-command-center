@@ -5,7 +5,8 @@ import { Position, ClosedTrade, PerformanceStats, PendingOpportunity } from './u
 import { StrategyType } from '@/components/dashboard/BalanceCard';
 
 const VIRTUAL_TRADE_AMOUNT = 100; // 100 USDT per trade in virtual mode
-const SCALPING_TRADE_AMOUNT = 500; // 500 USDT per trade for scalping
+const SCALPING_TRADE_AMOUNT = 1000; // 1000 USDT per trade for scalping (20% of 5000 balance)
+const SCALPING_STOP_LOSS_PERCENT = 0.8; // 0.8% stop loss for fast turnover
 const DEFAULT_TRAILING_STOP_PERCENT = 1;
 const FEE_PERCENT = 0.1;
 const MAX_OPEN_POSITIONS = 5; // Per strategy
@@ -24,12 +25,13 @@ interface StrategyConfig {
   isExperimental: boolean;
   tradeAmount: number;
   takeProfitPercent?: number;
+  stopLossPercent?: number;
 }
 
 const STRATEGY_CONFIGS: Record<StrategyId, StrategyConfig> = {
   breakout: { id: 'breakout', label: 'الاختراق S10', tag: '[الاختراق]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: VIRTUAL_TRADE_AMOUNT },
   rsi_bounce: { id: 'rsi_bounce', label: 'الارتداد S65', tag: '[الارتداد]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: VIRTUAL_TRADE_AMOUNT },
-  scalping: { id: 'scalping', label: 'النطاق S20', tag: '[النطاق]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: SCALPING_TRADE_AMOUNT, takeProfitPercent: 1.0 },
+  scalping: { id: 'scalping', label: 'النطاق S20', tag: '[النطاق]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: SCALPING_TRADE_AMOUNT, takeProfitPercent: 1.2, stopLossPercent: SCALPING_STOP_LOSS_PERCENT },
   institutional: { id: 'institutional', label: 'المؤسسي', tag: '[المؤسسي]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: true, tradeAmount: VIRTUAL_TRADE_AMOUNT },
   crossover: { id: 'crossover', label: 'التقاطعات', tag: '[التقاطعات]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: true, tradeAmount: VIRTUAL_TRADE_AMOUNT },
 };
