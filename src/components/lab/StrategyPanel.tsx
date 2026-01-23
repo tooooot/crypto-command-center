@@ -1,4 +1,5 @@
-import { BalanceCard } from '@/components/dashboard/BalanceCard';
+import { useState } from 'react';
+import { BalanceCard, StrategyType } from '@/components/dashboard/BalanceCard';
 import { GoldenOpportunity } from '@/components/dashboard/GoldenOpportunity';
 import { OpportunitiesList } from '@/components/dashboard/OpportunitiesList';
 import { PositionsList } from '@/components/dashboard/PositionsList';
@@ -20,6 +21,7 @@ export const StrategyPanel = ({
   rankedOpportunities,
   onGoldenBuy,
 }: StrategyPanelProps) => {
+  const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>('all');
   // Filter golden opportunity by strategy type
   const filteredGolden = goldenOpportunity && (
     engine.config.type === 'experimental' ||
@@ -70,6 +72,8 @@ export const StrategyPanel = ({
         isLive={false}
         autoTrading={engine.autoTrading}
         onAutoTradingChange={engine.toggleAutoTrading}
+        selectedStrategy={selectedStrategy}
+        onStrategyChange={setSelectedStrategy}
       />
 
       {/* Pending Opportunities */}
