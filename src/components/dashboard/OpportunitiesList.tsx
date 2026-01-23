@@ -1,8 +1,24 @@
-import { Crown, TrendingUp, BarChart3, Activity, Check, X, Sparkles } from 'lucide-react';
+import { Crown, TrendingUp, BarChart3, Activity, Check, X, Sparkles, Loader2, RefreshCw, AlertCircle, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { PendingOpportunity } from '@/hooks/usePaperTrading';
+import { PendingOpportunity, ExecutionStatus } from '@/hooks/usePaperTrading';
 import { RankedOpportunity } from '@/hooks/useOpportunityRanker';
+
+// Execution status display helper
+const getStatusDisplay = (status: ExecutionStatus, retryCount: number) => {
+  switch (status) {
+    case 'buying':
+      return { icon: Loader2, text: 'جاري الشراء...', color: 'text-terminal-amber', animate: true };
+    case 'retrying':
+      return { icon: RefreshCw, text: `إعادة محاولة (${retryCount}/6)`, color: 'text-orange-400', animate: true };
+    case 'executed':
+      return { icon: CheckCircle, text: 'تم التنفيذ', color: 'text-terminal-green', animate: false };
+    case 'failed':
+      return { icon: AlertCircle, text: 'فشل نهائي', color: 'text-terminal-red', animate: false };
+    default:
+      return null;
+  }
+};
 
 interface OpportunitiesListProps {
   pendingOpportunities: PendingOpportunity[];
@@ -62,18 +78,28 @@ export const OpportunitiesList = ({
             const isGolden = index === 0 && rankInfo?.rank === 1;
             const ranked = rankInfo?.data;
 
+            const statusDisplay = getStatusDisplay(pending.executionStatus, pending.retryCount);
+            const isExecuting = pending.executionStatus === 'buying' || pending.executionStatus === 'retrying';
+            const isCompleted = pending.executionStatus === 'executed' || pending.executionStatus === 'failed';
+
             return (
               <div
                 key={pending.id}
                 className={`rounded-xl p-3 border transition-all ${
                   isGolden
                     ? 'bg-gradient-to-r from-amber-500/15 to-yellow-500/10 border-amber-500/50'
+                    : pending.executionStatus === 'executed'
+                    ? 'bg-terminal-green/10 border-terminal-green/30'
+                    : pending.executionStatus === 'failed'
+                    ? 'bg-terminal-red/10 border-terminal-red/30'
+                    : isExecuting
+                    ? 'bg-terminal-amber/10 border-terminal-amber/30'
                     : 'bg-secondary/50 border-border/30'
                 }`}
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    {isGolden && (
+                    {isGolden && !isExecuting && !isCompleted && (
                       <Crown className="w-4 h-4 text-amber-400 animate-pulse" />
                     )}
                     <span className={`font-bold ${isGolden ? 'text-amber-300' : 'text-foreground'}`}>
@@ -82,28 +108,53 @@ export const OpportunitiesList = ({
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                       {pending.opportunity.strategyName}
                     </span>
+                    {/* Execution Status Badge */}
+                    {statusDisplay && (
+                      <div className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-background/50 ${statusDisplay.color}`}>
+                        <statusDisplay.icon className={`w-3 h-3 ${statusDisplay.animate ? 'animate-spin' : ''}`} />
+                        <span>{statusDisplay.text}</span>
+                      </div>
+                    )}
+                    {/* Reserved Amount */}
+                    {pending.reservedAmount > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">
+                        محجوز: ${pending.reservedAmount}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 w-7 p-0 text-muted-foreground hover:text-terminal-red hover:bg-terminal-red/10 rounded-full"
-                      onClick={() => onDismiss(pending.id)}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      className={`h-7 px-3 rounded-full ${
-                        isGolden
-                          ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-black font-bold hover:from-amber-600 hover:to-yellow-600'
-                          : 'bg-terminal-green text-black hover:bg-terminal-green/90'
-                      }`}
-                      onClick={() => onConfirm(pending.id)}
-                    >
-                      <Check className="w-3 h-3 me-1" />
-                      {isGolden ? '🏆' : 'شراء'}
-                    </Button>
+                    {!isCompleted && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 text-muted-foreground hover:text-terminal-red hover:bg-terminal-red/10 rounded-full"
+                          onClick={() => onDismiss(pending.id)}
+                          disabled={isExecuting}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          className={`h-7 px-3 rounded-full ${
+                            isGolden
+                              ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-black font-bold hover:from-amber-600 hover:to-yellow-600'
+                              : 'bg-terminal-green text-black hover:bg-terminal-green/90'
+                          }`}
+                          onClick={() => onConfirm(pending.id)}
+                          disabled={isExecuting}
+                        >
+                          {isExecuting ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <>
+                              <Check className="w-3 h-3 me-1" />
+                              {isGolden ? '🏆' : 'شراء'}
+                            </>
+                          )}
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
 
