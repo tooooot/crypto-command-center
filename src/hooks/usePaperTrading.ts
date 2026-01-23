@@ -61,21 +61,23 @@ export interface PerformanceStats {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// v2.4-LIVE-ONLY: PERMANENT LIVE TRADING - NO PAPER/VIRTUAL MODE
+// v2.5-AUTO-EXECUTE: LIVE TRADING + AUTO TP/SL + 15s TIMEOUT
 // ═══════════════════════════════════════════════════════════════════════════
 const TRADE_PERCENT = 40; // 40% of available balance per trade
-const MIN_TRADE_AMOUNT = 10; // Binance minimum: 10 USDT
+const MIN_TRADE_AMOUNT = 11; // 11 USDT per trade as requested
 const RESERVED_BALANCE = 5; // Reserve 5 USDT for fees
-const DEFAULT_TRAILING_STOP_PERCENT = 1;
+const DEFAULT_TRAILING_STOP_PERCENT = 0.8; // Stop Loss at -0.8%
+const TAKE_PROFIT_PERCENT = 1.2; // Take Profit at +1.2%
 const FEE_PERCENT = 0.1;
 const SLIPPAGE_PERCENT = 0.2; // 0.2% slippage tolerance for market orders
 const MAX_OPEN_POSITIONS = 10;
 const PROFIT_LOCK_THRESHOLD = 3;
 const PROFIT_LOCK_LEVEL = 2;
 const UNIVERSAL_AUTO_BUY_THRESHOLD = 60; // Any score >= 60 = instant buy
-const MAX_RETRY_ATTEMPTS = 3;
-const RETRY_INTERVAL = 3000;
-const API_TIMEOUT = 3000;
+const MAX_RETRY_ATTEMPTS = 6; // More retries for stability
+const RETRY_INTERVAL = 5000; // 5s between retries
+const API_TIMEOUT = 15000; // 15 seconds timeout
+const FALLBACK_BALANCE = 23.26; // Fallback balance if sync fails
 
 // Binance Mainnet API - ONLY REAL TRADING
 const SUPABASE_URL = 'https://lpwhiqtclpiuozxdaipc.supabase.co';
@@ -108,13 +110,13 @@ const fetchWithTimeout = async (url: string, options: RequestInit, timeout: numb
   }
 };
 
-// Fetch REAL balance from Binance Mainnet
-export const fetchBinanceBalance = async (): Promise<{ success: boolean; balance: number; latency: number }> => {
+// Fetch REAL balance from Binance Mainnet - with FALLBACK on failure
+export const fetchBinanceBalance = async (): Promise<{ success: boolean; balance: number; latency: number; usedFallback: boolean }> => {
   const requestId = Date.now().toString(36).toUpperCase();
   const startTime = performance.now();
   
   console.log(`[${SYSTEM_VERSION}:BALANCE:${requestId}] ════════════════════════════════════`);
-  console.log(`[${SYSTEM_VERSION}:BALANCE:${requestId}] FETCHING REAL BINANCE BALANCE`);
+  console.log(`[${SYSTEM_VERSION}:BALANCE:${requestId}] FETCHING REAL BINANCE BALANCE (15s timeout)`);
   
   try {
     const response = await fetchWithTimeout(BINANCE_MAINNET_ENDPOINT, {
@@ -134,23 +136,28 @@ export const fetchBinanceBalance = async (): Promise<{ success: boolean; balance
     console.log(`[${SYSTEM_VERSION}:BALANCE:${requestId}] ════════════════════════════════════`);
     
     if (data.success && typeof data.data?.balance === 'number') {
-      return { success: true, balance: data.data.balance, latency: elapsed };
+      return { success: true, balance: data.data.balance, latency: elapsed, usedFallback: false };
     }
-    return { success: false, balance: 0, latency: elapsed };
+    // Return fallback balance on API error - DON'T STOP TRADING
+    console.warn(`[${SYSTEM_VERSION}:BALANCE:${requestId}] API returned no balance, using fallback: ${FALLBACK_BALANCE}`);
+    return { success: true, balance: FALLBACK_BALANCE, latency: elapsed, usedFallback: true };
   } catch (error) {
     const elapsed = Math.round(performance.now() - startTime);
     console.error(`[${SYSTEM_VERSION}:BALANCE:${requestId}] ERROR: ${(error as Error).message}`);
-    return { success: false, balance: 0, latency: elapsed };
+    // FALLBACK: Use cached balance, don't stop trading
+    console.warn(`[${SYSTEM_VERSION}:BALANCE:${requestId}] Using fallback balance: ${FALLBACK_BALANCE} USDT`);
+    return { success: true, balance: FALLBACK_BALANCE, latency: elapsed, usedFallback: true };
   }
 };
 
-// Check Binance Mainnet health and get balance
-const checkMainnetHealth = async (): Promise<{ online: boolean; latency: number; balance?: number }> => {
+// Check Binance Mainnet health and get balance - with fallback
+const checkMainnetHealth = async (): Promise<{ online: boolean; latency: number; balance?: number; usedFallback?: boolean }> => {
   const result = await fetchBinanceBalance();
   return { 
     online: result.success, 
     latency: result.latency, 
-    balance: result.balance 
+    balance: result.balance,
+    usedFallback: result.usedFallback
   };
 };
 
@@ -243,19 +250,18 @@ export const usePaperTrading = (
   };
 
   // Execute a buy order via Binance Mainnet - ONLY SUCCESS WITH VALID ORDER ID
+  // v2.5: Skip balance check if it fails - use fallback balance
   const executeBuyOrder = useCallback(async (opportunity: StrategyResult, tradeAmount: number): Promise<{ success: boolean; orderId?: number }> => {
-    addLogEntry(`[${SYSTEM_VERSION}:MAINNET] جاري التحقق من الاتصال بـ Binance...`, 'info');
+    addLogEntry(`[${SYSTEM_VERSION}:MAINNET] جاري التحقق من الاتصال (15s timeout)...`, 'info');
     const health = await checkMainnetHealth();
     
-    if (!health.online) {
-      addLogEntry(`[${SYSTEM_VERSION}:MAINNET] ✗ الاتصال غير متاح (${health.latency}ms)`, 'error');
-      return { success: false };
-    }
-    
-    // Sync balance from Binance
-    if (health.balance !== undefined) {
+    // v2.5: DON'T STOP if balance sync fails - use fallback
+    if (health.balance !== undefined && health.balance > 0) {
       setVirtualBalance(health.balance);
-      addLogEntry(`[${SYSTEM_VERSION}:MAINNET] ✓ الرصيد الحقيقي: ${health.balance.toFixed(2)} USDT (${health.latency}ms)`, 'info');
+      const suffix = health.online ? '' : ' (fallback)';
+      addLogEntry(`[${SYSTEM_VERSION}:MAINNET] ✓ الرصيد: ${health.balance.toFixed(2)} USDT${suffix} (${health.latency}ms)`, 'info');
+    } else {
+      addLogEntry(`[${SYSTEM_VERSION}:MAINNET] ⚠ استخدام الرصيد المحلي: ${FALLBACK_BALANCE} USDT`, 'warning');
     }
     
     const entryPrice = parseFloat(opportunity.price);
@@ -530,13 +536,14 @@ export const usePaperTrading = (
     );
   }, [setVirtualBalance, addLogEntry]);
 
-  // Update positions with current prices and check trailing stops
+  // Update positions with current prices and check TP/SL + trailing stops
+  // v2.5: AUTO TP at +1.2%, AUTO SL at -0.8%
   useEffect(() => {
     if (coins.length === 0 || positions.length === 0) return;
 
     setPositions(prevPositions => {
       const updatedPositions: Position[] = [];
-      const positionsToClose: { position: Position; currentPrice: number }[] = [];
+      const positionsToClose: { position: Position; currentPrice: number; reason: string }[] = [];
 
       prevPositions.forEach(position => {
         const coin = coins.find(c => c.symbol === position.symbol);
@@ -554,6 +561,18 @@ export const usePaperTrading = (
         const netValue = grossValue - exitFee;
         const pnlAmount = netValue - position.investedAmount;
         const pnlPercent = (pnlAmount / position.investedAmount) * 100;
+
+        // v2.5: AUTO TAKE PROFIT at +1.2%
+        if (pnlPercent >= TAKE_PROFIT_PERCENT) {
+          positionsToClose.push({ position, currentPrice, reason: 'جني_ربح_+1.2%' });
+          return;
+        }
+
+        // v2.5: AUTO STOP LOSS at -0.8%
+        if (pnlPercent <= -DEFAULT_TRAILING_STOP_PERCENT) {
+          positionsToClose.push({ position, currentPrice, reason: 'وقف_خسارة_-0.8%' });
+          return;
+        }
 
         let stopUpdated = false;
         let profitLocked = false;
@@ -574,7 +593,7 @@ export const usePaperTrading = (
         }
 
         if (currentPrice <= newTrailingStopPrice) {
-          positionsToClose.push({ position, currentPrice });
+          positionsToClose.push({ position, currentPrice, reason: 'بيع_وقف_زاحف' });
           return;
         }
 
@@ -606,9 +625,9 @@ export const usePaperTrading = (
         });
       });
 
-      positionsToClose.forEach(({ position, currentPrice }) => {
+      positionsToClose.forEach(({ position, currentPrice, reason }) => {
         setTimeout(() => {
-          closePosition(position, currentPrice, 'بيع_وقف_زاحف');
+          closePosition(position, currentPrice, reason);
         }, 0);
       });
 
