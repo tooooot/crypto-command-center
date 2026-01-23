@@ -59,9 +59,56 @@ const MAX_OPEN_POSITIONS = 10; // Maximum concurrent positions
 const PROFIT_LOCK_THRESHOLD = 3; // Lock profit when PnL > 3%
 const PROFIT_LOCK_LEVEL = 2; // Lock at 2% profit
 
-// Trade API Configuration - Direct to Vultr Server
-const TRADE_API_URL = 'http://108.61.175.57/api/execute-trade';
+// Trade API Configuration - Via Edge Function Proxy
+const SUPABASE_URL = 'https://lpwhiqtclpiuozxdaipc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxwd2hpcXRjbHBpdW96eGRhaXBjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkwOTgyODQsImV4cCI6MjA4NDY3NDI4NH0.qV4dfR1ccUQokIflxyfQpkmfs_R4p5HOUWrCdHitAPs';
+const PROXY_ENDPOINT = `${SUPABASE_URL}/functions/v1/trade-proxy`;
 
+// Server Health Check (Handshake)
+const checkServerHealth = async (): Promise<{ online: boolean; latency: number }> => {
+  const requestId = Date.now().toString(36).toUpperCase();
+  console.log(`[HEALTH:${requestId}] ════════════════════════════════════`);
+  console.log(`[HEALTH:${requestId}] HANDSHAKE REQUEST`);
+  console.log(`[HEALTH:${requestId}] Time: ${new Date().toISOString()}`);
+  console.log(`[HEALTH:${requestId}] Endpoint: ${PROXY_ENDPOINT}`);
+  
+  const startTime = performance.now();
+  
+  try {
+    const response = await fetch(PROXY_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ action: 'health' }),
+    });
+    
+    const elapsed = Math.round(performance.now() - startTime);
+    const data = await response.json();
+    
+    console.log(`[HEALTH:${requestId}] RESPONSE RECEIVED`);
+    console.log(`[HEALTH:${requestId}] Status: ${response.status}`);
+    console.log(`[HEALTH:${requestId}] Online: ${data.serverOnline}`);
+    console.log(`[HEALTH:${requestId}] Latency: ${elapsed}ms`);
+    console.log(`[HEALTH:${requestId}] Data:`, JSON.stringify(data, null, 2));
+    console.log(`[HEALTH:${requestId}] ════════════════════════════════════`);
+    
+    return { 
+      online: data.success && data.serverOnline, 
+      latency: elapsed
+    };
+  } catch (error) {
+    const elapsed = Math.round(performance.now() - startTime);
+    console.error(`[HEALTH:${requestId}] ERROR`);
+    console.error(`[HEALTH:${requestId}] Elapsed: ${elapsed}ms`);
+    console.error(`[HEALTH:${requestId}] Message: ${(error as Error).message}`);
+    console.error(`[HEALTH:${requestId}] ════════════════════════════════════`);
+    return { online: false, latency: elapsed };
+  }
+};
+
+// Send trade via Edge Function Proxy with Detailed Logging
 const sendTradeToServer = async (tradeData: {
   symbol: string;
   side: 'BUY' | 'SELL';
@@ -69,24 +116,51 @@ const sendTradeToServer = async (tradeData: {
   price: string;
   strategyName: string;
 }): Promise<any> => {
+  const requestId = Date.now().toString(36).toUpperCase();
+  const startTime = performance.now();
+  
+  // === REQUEST SENT ===
+  console.log(`[TRADE:${requestId}] ════════════════════════════════════`);
+  console.log(`[TRADE:${requestId}] REQUEST SENT`);
+  console.log(`[TRADE:${requestId}] Time: ${new Date().toISOString()}`);
+  console.log(`[TRADE:${requestId}] Endpoint: ${PROXY_ENDPOINT}`);
+  console.log(`[TRADE:${requestId}] Payload:`, JSON.stringify(tradeData, null, 2));
+  console.log(`[TRADE:${requestId}] ────────────────────────────────────`);
+  
   try {
-    const response = await fetch(TRADE_API_URL, {
+    const response = await fetch(PROXY_ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify(tradeData),
+      body: JSON.stringify({ action: 'trade', ...tradeData }),
     });
     
-    if (!response.ok) {
-      throw new Error(`HTTP error: ${response.status}`);
-    }
+    const elapsed = Math.round(performance.now() - startTime);
+    const data = await response.json();
     
-    return await response.json();
+    // === RESPONSE RECEIVED ===
+    console.log(`[TRADE:${requestId}] RESPONSE RECEIVED`);
+    console.log(`[TRADE:${requestId}] Status Code: ${response.status}`);
+    console.log(`[TRADE:${requestId}] Elapsed: ${elapsed}ms`);
+    console.log(`[TRADE:${requestId}] Success: ${data.success}`);
+    console.log(`[TRADE:${requestId}] Data:`, JSON.stringify(data, null, 2));
+    console.log(`[TRADE:${requestId}] ════════════════════════════════════`);
+    
+    return { ...data, latency: elapsed };
+    
   } catch (error) {
-    console.error('Trade API error:', error);
-    return { success: false, error: (error as Error).message };
+    const elapsed = Math.round(performance.now() - startTime);
+    
+    // === ERROR ===
+    console.error(`[TRADE:${requestId}] ERROR DETAILS`);
+    console.error(`[TRADE:${requestId}] Elapsed: ${elapsed}ms`);
+    console.error(`[TRADE:${requestId}] Message: ${(error as Error).message}`);
+    console.error(`[TRADE:${requestId}] Stack: ${(error as Error).stack}`);
+    console.error(`[TRADE:${requestId}] ════════════════════════════════════`);
+    
+    return { success: false, error: (error as Error).message, latency: elapsed };
   }
 };
 
@@ -120,13 +194,25 @@ export const usePaperTrading = (
     totalTrades: closedTrades.length,
   };
 
-  // Execute a buy order (called after manual confirmation or automatically)
+  // Execute a buy order with Handshake
   const executeBuyOrder = useCallback(async (opportunity: StrategyResult): Promise<boolean> => {
+    // Step 1: Handshake - Check server health
+    addLogEntry(`[HANDSHAKE] جاري التحقق من اتصال السيرفر...`, 'info');
+    const health = await checkServerHealth();
+    
+    if (!health.online) {
+      addLogEntry(`[HANDSHAKE] ✗ السيرفر غير متاح! Latency: ${health.latency}ms`, 'error');
+      return false;
+    }
+    
+    addLogEntry(`[HANDSHAKE] ✓ السيرفر متصل | Latency: ${health.latency}ms`, 'success');
+    
+    // Step 2: Execute trade
     const entryPrice = parseFloat(opportunity.price);
     const fee = TRADE_AMOUNT * (FEE_PERCENT / 100);
     const quantity = (TRADE_AMOUNT - fee) / entryPrice;
 
-    addLogEntry(`[TRADE_API] جاري إرسال أمر شراء ${opportunity.symbol} إلى السيرفر...`, 'info');
+    addLogEntry(`[TRADE_API] جاري إرسال أمر شراء ${opportunity.symbol}...`, 'info');
     
     const result = await sendTradeToServer({
       symbol: opportunity.symbol,
@@ -138,12 +224,12 @@ export const usePaperTrading = (
 
     if (result.success) {
       addLogEntry(
-        `[TRADE_API] ✓ تم إرسال أمر الشراء بنجاح | ${JSON.stringify(result.data || result)}`,
+        `[TRADE_API] ✓ تم الإرسال بنجاح (${result.latency}ms) | ${JSON.stringify(result.data || {})}`,
         'success'
       );
       return true;
     } else if (result.error?.includes('Invalid symbol')) {
-      addLogEntry(`[TRADE_API] ⚠ عملة غير صالحة: ${opportunity.symbol} - تم استبعادها`, 'warning');
+      addLogEntry(`[TRADE_API] ⚠ عملة غير صالحة: ${opportunity.symbol}`, 'warning');
       return false;
     } else {
       addLogEntry(`[TRADE_API] ✗ فشل الشراء: ${result.error || 'خطأ غير معروف'}`, 'error');
@@ -240,8 +326,8 @@ export const usePaperTrading = (
     const pnlPercent = (pnlAmount / position.investedAmount) * 100;
     const isWin = pnlAmount > 0;
 
-    // Send sell order to Trade API Server
-    addLogEntry(`[TRADE_API] جاري إرسال أمر بيع ${position.symbol} إلى السيرفر...`, 'info');
+    // Send sell order via Proxy
+    addLogEntry(`[TRADE_API] جاري إرسال أمر بيع ${position.symbol}...`, 'info');
     
     const result = await sendTradeToServer({
       symbol: position.symbol,
@@ -253,7 +339,7 @@ export const usePaperTrading = (
 
     if (result.success) {
       addLogEntry(
-        `[TRADE_API] ✓ تم إرسال أمر البيع بنجاح | ${JSON.stringify(result.data || result)}`,
+        `[TRADE_API] ✓ تم إرسال أمر البيع (${result.latency}ms)`,
         'success'
       );
     } else if (result.error) {
