@@ -18,7 +18,7 @@ interface DiagnosticBundleProps {
   isPaused?: boolean;
 }
 
-const VERSION = 'v1.8.0-AR-TESTNET';
+const VERSION = 'v2.1-Final';
 
 export const DiagnosticBundle = ({
   totalScanned,

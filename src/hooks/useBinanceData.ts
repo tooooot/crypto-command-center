@@ -127,17 +127,33 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
     addLogEntry(`[فلترة] تم استبعاد العملة ${symbol} من الفحص المستقبلي`, 'warning');
   }, [addLogEntry]);
 
+  // v2.1-Final: Anti-Flood - Single fetch every 5 seconds ONLY
+  const lastFetchTime = useRef<number>(0);
+  const fetchIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
   useEffect(() => {
+    // Initial fetch
     fetchData();
+    lastFetchTime.current = Date.now();
     
-    // Refresh every 5 seconds for S20 priority scanning
-    const interval = setInterval(() => {
-      addLogEntry('[v2.1][S20-5s] بدء دورة التحديث السريع...', 'info');
-      fetchData();
+    // Anti-Flood: Strict 5-second interval - ONE fetch per cycle
+    fetchIntervalRef.current = setInterval(() => {
+      const now = Date.now();
+      const timeSinceLastFetch = now - lastFetchTime.current;
+      
+      // Only fetch if at least 4.5 seconds have passed (safety margin)
+      if (timeSinceLastFetch >= 4500) {
+        lastFetchTime.current = now;
+        fetchData();
+      }
     }, 5000);
 
-    return () => clearInterval(interval);
-  }, [fetchData, addLogEntry]);
+    return () => {
+      if (fetchIntervalRef.current) {
+        clearInterval(fetchIntervalRef.current);
+      }
+    };
+  }, [fetchData]);
 
   // Get cached price for a symbol (fallback when live data unavailable)
   const getCachedPrice = useCallback((symbol: string): CoinData | null => {

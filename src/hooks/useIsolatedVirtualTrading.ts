@@ -4,7 +4,7 @@ import { StrategyResult, StrategyId, STRATEGY_MANIFESTS, getVersion } from './us
 import { Position, ClosedTrade, PerformanceStats, PendingOpportunity } from './usePaperTrading';
 import { StrategyType } from '@/components/dashboard/BalanceCard';
 
-// v2.1: Fixed trade amounts - 1000 USDT per trade (no micro-trades)
+// v2.1-Final: Fixed trade amounts - 1000 USDT per trade (no micro-trades)
 const UNIFIED_TRADE_AMOUNT = 1000; // 1000 USDT per trade for ALL strategies
 const DEFAULT_TRAILING_STOP_PERCENT = 1;
 const FEE_PERCENT = 0.1;
@@ -15,8 +15,10 @@ const PROFIT_LOCK_LEVEL = 2;
 // Multi-Portfolio System: Each strategy gets isolated 5,000 USDT
 const UNIFIED_STRATEGY_BALANCE = 5000;
 
-// Auto-buy threshold: Any opportunity with score > 50/100 triggers instant buy
+// v2.1-Final: Lowered auto-buy threshold for Institutional to 60/100 (was 50)
+// This allows TRX with score 65 to trigger instant buy
 const AUTO_BUY_SCORE_THRESHOLD = 50;
+const INSTITUTIONAL_AUTO_BUY_THRESHOLD = 60; // Special threshold for institutional strategy
 
 // Strategy configurations with v2.1 rules
 interface StrategyConfig {
@@ -235,9 +237,10 @@ export const useIsolatedVirtualTrading = (
       return;
     }
 
-    // v2.1: Auto-buy if score > 50/100
+    // v2.1-Final: Auto-buy threshold - 60/100 for Institutional (to capture TRX at 65), 50 for others
     const opportunityScore = opportunity.score || 0;
-    const shouldAutoBuy = opportunityScore > AUTO_BUY_SCORE_THRESHOLD;
+    const autoBuyThreshold = strategyId === 'institutional' ? INSTITUTIONAL_AUTO_BUY_THRESHOLD : AUTO_BUY_SCORE_THRESHOLD;
+    const shouldAutoBuy = opportunityScore >= autoBuyThreshold;
 
     if (!skipConfirmation && !shouldAutoBuy) {
       const pendingId = crypto.randomUUID();

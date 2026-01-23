@@ -1,8 +1,8 @@
 import { useMemo, useRef, useEffect } from 'react';
 import { CoinData } from './useBinanceData';
 
-// v2.1 - Flexible Entry System
-const VERSION = 'v2.1';
+// v2.1-Final - Ultra Flexible Entry System
+const VERSION = 'v2.1-Final';
 
 // Core strategies (الكنز): breakout, rsi_bounce, scalping
 // Experimental strategies (تجريبية): institutional, crossover
@@ -19,8 +19,8 @@ export const STRATEGY_MANIFESTS = {
     name: 'S10 - الاختراق',
     rules: [
       'حد التذبذب: ≤ 10%',
-      'RSI المسموح: حتى 90 مع حجم > 2.5x',
-      'الحد الأدنى للتغير: +1.5%',
+      'RSI المسموح: حتى 90 مع حجم ≥ 1.8x',
+      'الحد الأدنى للتغير: +1.0%',
       'مبلغ الصفقة: 1000 USDT',
     ],
   },
@@ -166,12 +166,12 @@ export const useStrategies = (
       // ═══════════════════════════════════════════════════════════════
       
       // Strategy 10: Breakout Detection with Volume Confirmation
-      // v2.1: Allow volatility up to 10%, RSI up to 90 if volume > 2.5x
-      const isBreakoutVolumeSufficient = volumeMultiplier >= 2.5;
+      // v2.1-Final: Allow volatility up to 10%, RSI up to 90 if volume >= 1.8x, price change >= 1.0%
+      const isBreakoutVolumeSufficient = volumeMultiplier >= 1.8; // Lowered from 2.5x to 1.8x
       const isBreakoutRSIAllowed = isBreakoutVolumeSufficient ? rsiValue <= 90 : rsiValue <= 70;
-      const isBreakoutVolatilityAllowed = volatilityPercent <= 10; // Raised from 3% to 10%
+      const isBreakoutVolatilityAllowed = volatilityPercent <= 10;
       
-      if (changePercent >= 1.5 && isBreakoutVolumeSufficient && isBreakoutRSIAllowed && isBreakoutVolatilityAllowed) {
+      if (changePercent >= 1.0 && isBreakoutVolumeSufficient && isBreakoutRSIAllowed && isBreakoutVolatilityAllowed) { // Lowered from 1.5% to 1.0%
         // Calculate opportunity score (0-100)
         const volumeScore = Math.min(40, (volumeMultiplier / 5) * 40);
         const rsiScore = rsiValue < 70 ? 30 : (90 - rsiValue) / 20 * 30;
