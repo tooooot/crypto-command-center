@@ -11,6 +11,7 @@ export interface RankedOpportunity extends StrategyResult {
   volume24h: number;
   volatilityPercent: number;
   estimatedRSI: number;
+  dynamicTrailingStop: number; // وقف زاحف ديناميكي بناءً على ATR
 }
 
 // Calculate simulated RSI based on price change momentum (0-100)
@@ -40,8 +41,14 @@ export const useOpportunityRanker = (
       const coin = coins.find(c => c.symbol === opp.symbol);
       const volume24h = coin ? parseFloat(coin.quoteVolume) : 0;
       const priceChange = parseFloat(opp.priceChangePercent);
-      const estimatedRSI = calculateSimulatedRSI(priceChange);
-      const volatilityPercent = coin ? calculateVolatility(coin) : 0;
+      const estimatedRSI = opp.rsiValue ?? calculateSimulatedRSI(priceChange);
+      const volatilityPercent = opp.volatilityPercent ?? (coin ? calculateVolatility(coin) : 0);
+      
+      // Calculate dynamic trailing stop based on ATR (volatility)
+      // Higher volatility = wider stop to avoid premature exits
+      // Base: 1%, adjusted by ATR factor (0.5x to 2x)
+      const atrValue = opp.atr ?? volatilityPercent;
+      const dynamicTrailingStop = Math.max(0.5, Math.min(3, 1 + (atrValue * 0.3)));
 
       // Volume Score (0-40 points) - Higher is better
       // Top volume coins get higher scores
@@ -88,6 +95,7 @@ export const useOpportunityRanker = (
         volume24h,
         volatilityPercent,
         estimatedRSI,
+        dynamicTrailingStop,
       };
     });
 

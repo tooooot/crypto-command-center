@@ -4,7 +4,7 @@ import { StrategyResult } from './useStrategies';
 import { Position, ClosedTrade, PerformanceStats, PendingOpportunity } from './usePaperTrading';
 
 const VIRTUAL_TRADE_AMOUNT = 100; // 100 USDT per trade in virtual mode
-const TRAILING_STOP_PERCENT = 1;
+const DEFAULT_TRAILING_STOP_PERCENT = 1;
 const FEE_PERCENT = 0.1;
 const MAX_OPEN_POSITIONS = 10;
 const PROFIT_LOCK_THRESHOLD = 3;
@@ -65,7 +65,12 @@ export const useVirtualTrading = (
     const fee = VIRTUAL_TRADE_AMOUNT * (FEE_PERCENT / 100);
     const entryPrice = parseFloat(opportunity.price);
     const quantity = (VIRTUAL_TRADE_AMOUNT - fee) / entryPrice;
-    const trailingStopPrice = entryPrice * (1 - TRAILING_STOP_PERCENT / 100);
+    
+    // Use dynamic trailing stop from opportunity ATR, or default
+    const trailingStopPercent = opportunity.atr 
+      ? Math.max(0.5, Math.min(3, 1 + (opportunity.atr * 0.3))) 
+      : DEFAULT_TRAILING_STOP_PERCENT;
+    const trailingStopPrice = entryPrice * (1 - trailingStopPercent / 100);
 
     const newPosition: Position = {
       id: crypto.randomUUID(),
@@ -76,8 +81,10 @@ export const useVirtualTrading = (
       investedAmount: VIRTUAL_TRADE_AMOUNT,
       highestPrice: entryPrice,
       trailingStopPrice,
+      trailingStopPercent,
       strategy: opportunity.strategy,
       strategyName: opportunity.strategyName,
+      entryReason: opportunity.entryReason || opportunity.strategyName,
       openedAt: new Date(),
       pnlPercent: -FEE_PERCENT,
       pnlAmount: -fee,
@@ -167,7 +174,8 @@ export const useVirtualTrading = (
 
         if (currentPrice > position.highestPrice) {
           newHighestPrice = currentPrice;
-          newTrailingStopPrice = currentPrice * (1 - TRAILING_STOP_PERCENT / 100);
+          // Use position's dynamic trailing stop percent
+          newTrailingStopPrice = currentPrice * (1 - position.trailingStopPercent / 100);
         }
         
         if (pnlPercent > PROFIT_LOCK_THRESHOLD) {

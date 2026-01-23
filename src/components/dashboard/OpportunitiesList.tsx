@@ -131,6 +131,24 @@ export const OpportunitiesList = ({
                   )}
                 </div>
 
+                {/* Entry Reason - سبب الدخول */}
+                {pending.opportunity.entryReason && (
+                  <div className="mt-2 p-2 rounded-lg bg-muted/50 border border-border/30">
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                      <TrendingUp className="w-3 h-3 text-terminal-green" />
+                      <span className="text-muted-foreground">سبب الدخول:</span>
+                      <span className="text-foreground font-medium">{pending.opportunity.entryReason}</span>
+                    </div>
+                    {ranked && ranked.dynamicTrailingStop && (
+                      <div className="flex items-center gap-1.5 text-[10px] mt-1">
+                        <Activity className="w-3 h-3 text-amber-400" />
+                        <span className="text-muted-foreground">وقف زاحف ATR:</span>
+                        <span className="text-amber-400 font-medium">{ranked.dynamicTrailingStop.toFixed(2)}%</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {isGolden && ranked && (
                   <div className="mt-2 text-[10px] text-amber-400">
                     ✨ {ranked.rankReason}

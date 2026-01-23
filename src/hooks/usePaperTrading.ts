@@ -13,8 +13,10 @@ export interface Position {
   investedAmount: number;
   highestPrice: number;
   trailingStopPrice: number;
+  trailingStopPercent: number; // Dynamic trailing stop percentage (ATR-based)
   strategy: string;
   strategyName: string;
+  entryReason: string; // سبب الدخول
   openedAt: Date;
   pnlPercent: number;
   pnlAmount: number;
@@ -51,7 +53,7 @@ export interface PerformanceStats {
 }
 
 const TRADE_AMOUNT = 10; // 10 USDT minimum per trade
-const TRAILING_STOP_PERCENT = 1; // 1% trailing stop
+const DEFAULT_TRAILING_STOP_PERCENT = 1; // 1% trailing stop (default)
 const FEE_PERCENT = 0.1; // 0.1% fee per transaction
 const RESERVED_BALANCE = 12; // Reserve 12 USDT from total balance
 const MIN_BALANCE_FOR_TRADE = 10; // Minimum 10 USDT
@@ -272,7 +274,12 @@ export const usePaperTrading = (
     const fee = TRADE_AMOUNT * (FEE_PERCENT / 100);
     const entryPrice = parseFloat(opportunity.price);
     const quantity = (TRADE_AMOUNT - fee) / entryPrice;
-    const trailingStopPrice = entryPrice * (1 - TRAILING_STOP_PERCENT / 100);
+    
+    // Use dynamic trailing stop from opportunity ATR, or default
+    const trailingStopPercent = opportunity.atr 
+      ? Math.max(0.5, Math.min(3, 1 + (opportunity.atr * 0.3))) 
+      : DEFAULT_TRAILING_STOP_PERCENT;
+    const trailingStopPrice = entryPrice * (1 - trailingStopPercent / 100);
 
     const newPosition: Position = {
       id: crypto.randomUUID(),
@@ -283,8 +290,10 @@ export const usePaperTrading = (
       investedAmount: TRADE_AMOUNT,
       highestPrice: entryPrice,
       trailingStopPrice,
+      trailingStopPercent,
       strategy: opportunity.strategy,
       strategyName: opportunity.strategyName,
+      entryReason: opportunity.entryReason || opportunity.strategyName,
       openedAt: new Date(),
       pnlPercent: -FEE_PERCENT,
       pnlAmount: -fee,
@@ -408,7 +417,8 @@ export const usePaperTrading = (
         
         if (currentPrice > position.highestPrice) {
           newHighestPrice = currentPrice;
-          newTrailingStopPrice = currentPrice * (1 - TRAILING_STOP_PERCENT / 100);
+          // Use position's dynamic trailing stop percent
+          newTrailingStopPrice = currentPrice * (1 - position.trailingStopPercent / 100);
           stopUpdated = true;
         }
         
