@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { CoinData } from './useBinanceData';
-import { StrategyResult } from './useStrategies';
+import { StrategyResult, StrategyId } from './useStrategies';
 import { Position, ClosedTrade, PerformanceStats, PendingOpportunity } from './usePaperTrading';
 import { StrategyType } from '@/components/dashboard/BalanceCard';
 
@@ -10,40 +10,114 @@ const FEE_PERCENT = 0.1;
 const MAX_OPEN_POSITIONS = 5; // Per strategy
 const PROFIT_LOCK_THRESHOLD = 3;
 const PROFIT_LOCK_LEVEL = 2;
-const STRATEGY_INITIAL_BALANCE = 5000; // 5,000 USDT per strategy
 
-export interface StrategyEngine {
+// Core strategies get 5,000 USDT each (الكنز)
+const CORE_STRATEGY_BALANCE = 5000;
+// Experimental strategies share remaining budget
+const EXPERIMENTAL_STRATEGY_BALANCE = 2500;
+
+// Strategy configurations
+interface StrategyConfig {
+  id: StrategyId;
+  label: string;
+  tag: string;
+  initialBalance: number;
+  isExperimental: boolean;
+}
+
+const STRATEGY_CONFIGS: Record<StrategyId, StrategyConfig> = {
+  breakout: { id: 'breakout', label: 'الاختراق', tag: '[الاختراق]', initialBalance: CORE_STRATEGY_BALANCE, isExperimental: false },
+  rsi_bounce: { id: 'rsi_bounce', label: 'الارتداد', tag: '[الارتداد]', initialBalance: CORE_STRATEGY_BALANCE, isExperimental: false },
+  institutional: { id: 'institutional', label: 'المؤسسي', tag: '[المؤسسي]', initialBalance: EXPERIMENTAL_STRATEGY_BALANCE, isExperimental: true },
+  crossover: { id: 'crossover', label: 'التقاطعات', tag: '[التقاطعات]', initialBalance: EXPERIMENTAL_STRATEGY_BALANCE, isExperimental: true },
+};
+
+// Map StrategyType to StrategyId
+const strategyTypeToId = (type: StrategyType): StrategyId | null => {
+  if (type === 'breakout') return 'breakout';
+  if (type === 'rsiBounce') return 'rsi_bounce';
+  if (type === 'institutional') return 'institutional';
+  if (type === 'crossover') return 'crossover';
+  return null;
+};
+
+// Map StrategyId to StrategyType
+const strategyIdToType = (id: StrategyId): StrategyType => {
+  if (id === 'rsi_bounce') return 'rsiBounce';
+  return id as StrategyType;
+};
+
+interface StrategyState {
   balance: number;
   positions: Position[];
   closedTrades: ClosedTrade[];
   pendingOpportunities: PendingOpportunity[];
-  performanceStats: PerformanceStats;
-  openPositionsValue: number;
-  totalPortfolioValue: number;
-  processOpportunities: (opportunities: StrategyResult[], skipConfirmation: boolean) => void;
-  confirmPendingOpportunity: (id: string) => void;
-  dismissPendingOpportunity: (id: string) => void;
-  manualClosePosition: (id: string) => void;
-  hardReset: () => void;
+  processedKeys: Set<string>;
 }
 
-const createStrategyEngine = (
-  strategyType: 'breakout' | 'rsiBounce',
+const createInitialState = (config: StrategyConfig): StrategyState => ({
+  balance: config.initialBalance,
+  positions: [],
+  closedTrades: [],
+  pendingOpportunities: [],
+  processedKeys: new Set(),
+});
+
+export const useIsolatedVirtualTrading = (
   coins: CoinData[],
   addLogEntry: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void
-): StrategyEngine => {
-  let balance = STRATEGY_INITIAL_BALANCE;
-  let positions: Position[] = [];
-  let closedTrades: ClosedTrade[] = [];
-  let pendingOpportunities: PendingOpportunity[] = [];
-  const processedOpportunities = new Set<string>();
+) => {
+  // Separate state for each strategy
+  const [breakoutState, setBreakoutState] = useState<Omit<StrategyState, 'processedKeys'>>(() => ({
+    balance: CORE_STRATEGY_BALANCE,
+    positions: [],
+    closedTrades: [],
+    pendingOpportunities: [],
+  }));
+  
+  const [rsiBounceState, setRsiBounceState] = useState<Omit<StrategyState, 'processedKeys'>>(() => ({
+    balance: CORE_STRATEGY_BALANCE,
+    positions: [],
+    closedTrades: [],
+    pendingOpportunities: [],
+  }));
+  
+  const [institutionalState, setInstitutionalState] = useState<Omit<StrategyState, 'processedKeys'>>(() => ({
+    balance: EXPERIMENTAL_STRATEGY_BALANCE,
+    positions: [],
+    closedTrades: [],
+    pendingOpportunities: [],
+  }));
+  
+  const [crossoverState, setCrossoverState] = useState<Omit<StrategyState, 'processedKeys'>>(() => ({
+    balance: EXPERIMENTAL_STRATEGY_BALANCE,
+    positions: [],
+    closedTrades: [],
+    pendingOpportunities: [],
+  }));
 
-  const strategyTag = strategyType === 'breakout' ? '[الاختراق]' : '[الارتداد]';
+  // Processed keys refs
+  const processedBreakout = useRef<Set<string>>(new Set());
+  const processedRsiBounce = useRef<Set<string>>(new Set());
+  const processedInstitutional = useRef<Set<string>>(new Set());
+  const processedCrossover = useRef<Set<string>>(new Set());
 
-  const getOpenPositionsValue = () => 
-    positions.reduce((sum, pos) => sum + (pos.quantity * pos.currentPrice), 0);
+  // Helper to get state and setter by strategy ID
+  const getStrategyStateAndSetter = (strategyId: StrategyId) => {
+    switch (strategyId) {
+      case 'breakout':
+        return { state: breakoutState, setState: setBreakoutState, processed: processedBreakout, config: STRATEGY_CONFIGS.breakout };
+      case 'rsi_bounce':
+        return { state: rsiBounceState, setState: setRsiBounceState, processed: processedRsiBounce, config: STRATEGY_CONFIGS.rsi_bounce };
+      case 'institutional':
+        return { state: institutionalState, setState: setInstitutionalState, processed: processedInstitutional, config: STRATEGY_CONFIGS.institutional };
+      case 'crossover':
+        return { state: crossoverState, setState: setCrossoverState, processed: processedCrossover, config: STRATEGY_CONFIGS.crossover };
+    }
+  };
 
-  const getPerformanceStats = (): PerformanceStats => ({
+  // Calculate performance stats for a strategy
+  const calculateStats = (closedTrades: ClosedTrade[]): PerformanceStats => ({
     totalPnL: closedTrades.reduce((sum, trade) => sum + trade.pnlAmount, 0),
     totalPnLPercent: closedTrades.length > 0 
       ? closedTrades.reduce((sum, trade) => sum + trade.pnlPercent, 0) / closedTrades.length 
@@ -56,111 +130,31 @@ const createStrategyEngine = (
     totalTrades: closedTrades.length,
   });
 
-  return {
-    get balance() { return balance; },
-    get positions() { return positions; },
-    get closedTrades() { return closedTrades; },
-    get pendingOpportunities() { return pendingOpportunities; },
-    get performanceStats() { return getPerformanceStats(); },
-    get openPositionsValue() { return getOpenPositionsValue(); },
-    get totalPortfolioValue() { return balance + getOpenPositionsValue(); },
-    
-    processOpportunities: () => {},
-    confirmPendingOpportunity: () => {},
-    dismissPendingOpportunity: () => {},
-    manualClosePosition: () => {},
-    hardReset: () => {
-      balance = STRATEGY_INITIAL_BALANCE;
-      positions = [];
-      closedTrades = [];
-      pendingOpportunities = [];
-      processedOpportunities.clear();
-      addLogEntry(`${strategyTag} تم إعادة ضبط المحفظة`, 'info');
-    },
-  };
-};
+  // Calculate open positions value
+  const calculateOpenValue = (positions: Position[]) =>
+    positions.reduce((sum, pos) => sum + (pos.quantity * pos.currentPrice), 0);
 
-export const useIsolatedVirtualTrading = (
-  coins: CoinData[],
-  addLogEntry: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void
-) => {
-  // Separate state for each strategy
-  const [breakoutBalance, setBreakoutBalance] = useState(STRATEGY_INITIAL_BALANCE);
-  const [rsiBounceBalance, setRsiBounceBalance] = useState(STRATEGY_INITIAL_BALANCE);
-  
-  const [breakoutPositions, setBreakoutPositions] = useState<Position[]>([]);
-  const [rsiBouncePositions, setRsiBouncePositions] = useState<Position[]>([]);
-  
-  const [breakoutClosedTrades, setBreakoutClosedTrades] = useState<ClosedTrade[]>([]);
-  const [rsiBounceClosedTrades, setRsiBounceClosedTrades] = useState<ClosedTrade[]>([]);
-  
-  const [breakoutPending, setBreakoutPending] = useState<PendingOpportunity[]>([]);
-  const [rsiBoundPending, setRsiBoundPending] = useState<PendingOpportunity[]>([]);
-  
-  const processedBreakout = useRef<Set<string>>(new Set());
-  const processedRsiBounce = useRef<Set<string>>(new Set());
+  // Memoized stats for each strategy
+  const breakoutStats = useMemo(() => calculateStats(breakoutState.closedTrades), [breakoutState.closedTrades]);
+  const rsiBounceStats = useMemo(() => calculateStats(rsiBounceState.closedTrades), [rsiBounceState.closedTrades]);
+  const institutionalStats = useMemo(() => calculateStats(institutionalState.closedTrades), [institutionalState.closedTrades]);
+  const crossoverStats = useMemo(() => calculateStats(crossoverState.closedTrades), [crossoverState.closedTrades]);
 
-  // Calculate values for Breakout
-  const breakoutOpenPositionsValue = useMemo(() => 
-    breakoutPositions.reduce((sum, pos) => sum + (pos.quantity * pos.currentPrice), 0),
-    [breakoutPositions]
-  );
-  const breakoutTotalPortfolio = breakoutBalance + breakoutOpenPositionsValue;
-
-  // Calculate values for RSI Bounce
-  const rsiBounceOpenPositionsValue = useMemo(() => 
-    rsiBouncePositions.reduce((sum, pos) => sum + (pos.quantity * pos.currentPrice), 0),
-    [rsiBouncePositions]
-  );
-  const rsiBoundTotalPortfolio = rsiBounceBalance + rsiBounceOpenPositionsValue;
-
-  // Performance stats for Breakout
-  const breakoutStats: PerformanceStats = useMemo(() => ({
-    totalPnL: breakoutClosedTrades.reduce((sum, trade) => sum + trade.pnlAmount, 0),
-    totalPnLPercent: breakoutClosedTrades.length > 0 
-      ? breakoutClosedTrades.reduce((sum, trade) => sum + trade.pnlPercent, 0) / breakoutClosedTrades.length 
-      : 0,
-    winningTrades: breakoutClosedTrades.filter(t => t.isWin).length,
-    losingTrades: breakoutClosedTrades.filter(t => !t.isWin).length,
-    winRate: breakoutClosedTrades.length > 0 
-      ? (breakoutClosedTrades.filter(t => t.isWin).length / breakoutClosedTrades.length) * 100 
-      : 0,
-    totalTrades: breakoutClosedTrades.length,
-  }), [breakoutClosedTrades]);
-
-  // Performance stats for RSI Bounce
-  const rsiBounceStats: PerformanceStats = useMemo(() => ({
-    totalPnL: rsiBounceClosedTrades.reduce((sum, trade) => sum + trade.pnlAmount, 0),
-    totalPnLPercent: rsiBounceClosedTrades.length > 0 
-      ? rsiBounceClosedTrades.reduce((sum, trade) => sum + trade.pnlPercent, 0) / rsiBounceClosedTrades.length 
-      : 0,
-    winningTrades: rsiBounceClosedTrades.filter(t => t.isWin).length,
-    losingTrades: rsiBounceClosedTrades.filter(t => !t.isWin).length,
-    winRate: rsiBounceClosedTrades.length > 0 
-      ? (rsiBounceClosedTrades.filter(t => t.isWin).length / rsiBounceClosedTrades.length) * 100 
-      : 0,
-    totalTrades: rsiBounceClosedTrades.length,
-  }), [rsiBounceClosedTrades]);
-
-  // Combined stats for "all" view
-  const combinedStats: PerformanceStats = useMemo(() => {
-    const allClosed = [...breakoutClosedTrades, ...rsiBounceClosedTrades];
-    return {
-      totalPnL: allClosed.reduce((sum, trade) => sum + trade.pnlAmount, 0),
-      totalPnLPercent: allClosed.length > 0 
-        ? allClosed.reduce((sum, trade) => sum + trade.pnlPercent, 0) / allClosed.length 
-        : 0,
-      winningTrades: allClosed.filter(t => t.isWin).length,
-      losingTrades: allClosed.filter(t => !t.isWin).length,
-      winRate: allClosed.length > 0 
-        ? (allClosed.filter(t => t.isWin).length / allClosed.length) * 100 
-        : 0,
-      totalTrades: allClosed.length,
-    };
-  }, [breakoutClosedTrades, rsiBounceClosedTrades]);
+  // Open positions values
+  const breakoutOpenValue = useMemo(() => calculateOpenValue(breakoutState.positions), [breakoutState.positions]);
+  const rsiBounceOpenValue = useMemo(() => calculateOpenValue(rsiBounceState.positions), [rsiBounceState.positions]);
+  const institutionalOpenValue = useMemo(() => calculateOpenValue(institutionalState.positions), [institutionalState.positions]);
+  const crossoverOpenValue = useMemo(() => calculateOpenValue(crossoverState.positions), [crossoverState.positions]);
 
   // Close position helper
-  const closeBreakoutPosition = useCallback((position: Position, currentPrice: number, reason: string) => {
+  const closePosition = useCallback((
+    position: Position,
+    currentPrice: number,
+    reason: string,
+    strategyId: StrategyId
+  ) => {
+    const { setState, config } = getStrategyStateAndSetter(strategyId);
+    
     const exitFee = (position.quantity * currentPrice) * (FEE_PERCENT / 100);
     const grossValue = position.quantity * currentPrice;
     const netValue = grossValue - exitFee;
@@ -183,69 +177,49 @@ export const useIsolatedVirtualTrading = (
       isWin,
     };
 
-    setBreakoutClosedTrades(prev => [...prev, closedTrade]);
-    setBreakoutPositions(prev => prev.filter(p => p.id !== position.id));
-    setBreakoutBalance(prev => prev + netValue);
+    setState(prev => ({
+      ...prev,
+      closedTrades: [...prev.closedTrades, closedTrade],
+      positions: prev.positions.filter(p => p.id !== position.id),
+      balance: prev.balance + netValue,
+    }));
 
     const pnlSign = pnlAmount >= 0 ? '+' : '';
+    const experimentalTag = config.isExperimental ? ':تجريبي' : '';
     addLogEntry(
-      `[الاختراق:${reason}] ${position.symbol} | ${pnlSign}${pnlPercent.toFixed(2)}%`,
+      `${config.tag}${experimentalTag}:${reason}] ${position.symbol} | ${pnlSign}${pnlPercent.toFixed(2)}%`,
       isWin ? 'success' : 'error'
     );
   }, [addLogEntry]);
 
-  const closeRsiBouncePosition = useCallback((position: Position, currentPrice: number, reason: string) => {
-    const exitFee = (position.quantity * currentPrice) * (FEE_PERCENT / 100);
-    const grossValue = position.quantity * currentPrice;
-    const netValue = grossValue - exitFee;
-    const pnlAmount = netValue - position.investedAmount;
-    const pnlPercent = (pnlAmount / position.investedAmount) * 100;
-    const isWin = pnlAmount > 0;
-
-    const closedTrade: ClosedTrade = {
-      id: position.id,
-      symbol: position.symbol,
-      entryPrice: position.entryPrice,
-      exitPrice: currentPrice,
-      quantity: position.quantity,
-      investedAmount: position.investedAmount,
-      pnlPercent,
-      pnlAmount,
-      strategy: position.strategy,
-      openedAt: position.openedAt,
-      closedAt: new Date(),
-      isWin,
-    };
-
-    setRsiBounceClosedTrades(prev => [...prev, closedTrade]);
-    setRsiBouncePositions(prev => prev.filter(p => p.id !== position.id));
-    setRsiBounceBalance(prev => prev + netValue);
-
-    const pnlSign = pnlAmount >= 0 ? '+' : '';
-    addLogEntry(
-      `[الارتداد:${reason}] ${position.symbol} | ${pnlSign}${pnlPercent.toFixed(2)}%`,
-      isWin ? 'success' : 'error'
-    );
-  }, [addLogEntry]);
-
-  // Open position for Breakout
-  const openBreakoutPosition = useCallback((opportunity: StrategyResult, skipConfirmation: boolean) => {
-    const existingPosition = breakoutPositions.find(p => p.symbol === opportunity.symbol);
+  // Open position helper
+  const openPosition = useCallback((
+    opportunity: StrategyResult,
+    skipConfirmation: boolean,
+    strategyId: StrategyId
+  ) => {
+    const { state, setState, processed, config } = getStrategyStateAndSetter(strategyId);
+    
+    const existingPosition = state.positions.find(p => p.symbol === opportunity.symbol);
     if (existingPosition) return;
 
-    if (breakoutBalance < VIRTUAL_TRADE_AMOUNT) {
-      addLogEntry(`[الاختراق] الرصيد غير كافٍ`, 'warning');
+    if (state.balance < VIRTUAL_TRADE_AMOUNT) {
+      addLogEntry(`${config.tag} الرصيد غير كافٍ`, 'warning');
       return;
     }
 
     if (!skipConfirmation) {
       const pendingId = crypto.randomUUID();
-      setBreakoutPending(prev => [...prev, {
-        id: pendingId,
-        opportunity,
-        detectedAt: new Date(),
-      }]);
-      addLogEntry(`[الاختراق:انتظار] ${opportunity.symbol} | $${parseFloat(opportunity.price).toFixed(6)}`, 'warning');
+      setState(prev => ({
+        ...prev,
+        pendingOpportunities: [...prev.pendingOpportunities, {
+          id: pendingId,
+          opportunity,
+          detectedAt: new Date(),
+        }],
+      }));
+      const experimentalTag = config.isExperimental ? ':تجريبي' : '';
+      addLogEntry(`${config.tag}${experimentalTag}:انتظار] ${opportunity.symbol} | $${parseFloat(opportunity.price).toFixed(6)}`, 'warning');
       return;
     }
 
@@ -276,71 +250,18 @@ export const useIsolatedVirtualTrading = (
       pnlAmount: -fee,
     };
 
-    setBreakoutPositions(prev => [...prev, newPosition]);
-    setBreakoutBalance(prev => prev - VIRTUAL_TRADE_AMOUNT);
+    setState(prev => ({
+      ...prev,
+      positions: [...prev.positions, newPosition],
+      balance: prev.balance - VIRTUAL_TRADE_AMOUNT,
+    }));
 
+    const experimentalTag = config.isExperimental ? ':تجريبي' : '';
     addLogEntry(
-      `[الاختراق:شراء] ${opportunity.symbol} | $${entryPrice.toFixed(6)}`,
+      `${config.tag}${experimentalTag}:شراء] ${opportunity.symbol} | $${entryPrice.toFixed(6)}`,
       'success'
     );
-  }, [breakoutPositions, breakoutBalance, addLogEntry]);
-
-  // Open position for RSI Bounce
-  const openRsiBouncePosition = useCallback((opportunity: StrategyResult, skipConfirmation: boolean) => {
-    const existingPosition = rsiBouncePositions.find(p => p.symbol === opportunity.symbol);
-    if (existingPosition) return;
-
-    if (rsiBounceBalance < VIRTUAL_TRADE_AMOUNT) {
-      addLogEntry(`[الارتداد] الرصيد غير كافٍ`, 'warning');
-      return;
-    }
-
-    if (!skipConfirmation) {
-      const pendingId = crypto.randomUUID();
-      setRsiBoundPending(prev => [...prev, {
-        id: pendingId,
-        opportunity,
-        detectedAt: new Date(),
-      }]);
-      addLogEntry(`[الارتداد:انتظار] ${opportunity.symbol} | $${parseFloat(opportunity.price).toFixed(6)}`, 'warning');
-      return;
-    }
-
-    const fee = VIRTUAL_TRADE_AMOUNT * (FEE_PERCENT / 100);
-    const entryPrice = parseFloat(opportunity.price);
-    const quantity = (VIRTUAL_TRADE_AMOUNT - fee) / entryPrice;
-    
-    const trailingStopPercent = opportunity.atr 
-      ? Math.max(0.5, Math.min(3, 1 + (opportunity.atr * 0.3))) 
-      : DEFAULT_TRAILING_STOP_PERCENT;
-    const trailingStopPrice = entryPrice * (1 - trailingStopPercent / 100);
-
-    const newPosition: Position = {
-      id: crypto.randomUUID(),
-      symbol: opportunity.symbol,
-      entryPrice,
-      currentPrice: entryPrice,
-      quantity,
-      investedAmount: VIRTUAL_TRADE_AMOUNT,
-      highestPrice: entryPrice,
-      trailingStopPrice,
-      trailingStopPercent,
-      strategy: opportunity.strategy,
-      strategyName: opportunity.strategyName,
-      entryReason: opportunity.entryReason || opportunity.strategyName,
-      openedAt: new Date(),
-      pnlPercent: -FEE_PERCENT,
-      pnlAmount: -fee,
-    };
-
-    setRsiBouncePositions(prev => [...prev, newPosition]);
-    setRsiBounceBalance(prev => prev - VIRTUAL_TRADE_AMOUNT);
-
-    addLogEntry(
-      `[الارتداد:شراء] ${opportunity.symbol} | $${entryPrice.toFixed(6)}`,
-      'success'
-    );
-  }, [rsiBouncePositions, rsiBounceBalance, addLogEntry]);
+  }, [breakoutState, rsiBounceState, institutionalState, crossoverState, addLogEntry]);
 
   // Process opportunities - routes to correct strategy engine
   const processOpportunities = useCallback((
@@ -349,277 +270,226 @@ export const useIsolatedVirtualTrading = (
     strategyFilter: StrategyType
   ) => {
     opportunities.forEach(opportunity => {
-      const opportunityKey = `${opportunity.symbol}-${opportunity.strategy}`;
+      const strategyId = opportunity.strategy;
+      const { state, processed, config } = getStrategyStateAndSetter(strategyId);
       
-      // Route based on strategy type
-      if (opportunity.strategy === 'breakout') {
-        if (strategyFilter !== 'rsiBounce') { // Allow if 'all' or 'breakout'
-          if (breakoutPositions.length >= MAX_OPEN_POSITIONS) return;
-          if (!processedBreakout.current.has(opportunityKey)) {
-            openBreakoutPosition(opportunity, skipConfirmation);
-            processedBreakout.current.add(opportunityKey);
-            setTimeout(() => processedBreakout.current.delete(opportunityKey), 60000);
-          }
-        }
-      } else if (opportunity.strategy === 'rsi_bounce') {
-        if (strategyFilter !== 'breakout') { // Allow if 'all' or 'rsiBounce'
-          if (rsiBouncePositions.length >= MAX_OPEN_POSITIONS) return;
-          if (!processedRsiBounce.current.has(opportunityKey)) {
-            openRsiBouncePosition(opportunity, skipConfirmation);
-            processedRsiBounce.current.add(opportunityKey);
-            setTimeout(() => processedRsiBounce.current.delete(opportunityKey), 60000);
-          }
-        }
-      }
+      // Check if this strategy matches the filter
+      const filterMatch = strategyFilter === 'all' || 
+        (strategyFilter === 'breakout' && strategyId === 'breakout') ||
+        (strategyFilter === 'rsiBounce' && strategyId === 'rsi_bounce') ||
+        (strategyFilter === 'institutional' && strategyId === 'institutional') ||
+        (strategyFilter === 'crossover' && strategyId === 'crossover');
+      
+      if (!filterMatch) return;
+      
+      const opportunityKey = `${opportunity.symbol}-${strategyId}`;
+      
+      if (state.positions.length >= MAX_OPEN_POSITIONS) return;
+      if (processed.current.has(opportunityKey)) return;
+      
+      openPosition(opportunity, skipConfirmation, strategyId);
+      processed.current.add(opportunityKey);
+      setTimeout(() => processed.current.delete(opportunityKey), 60000);
     });
-  }, [breakoutPositions.length, rsiBouncePositions.length, openBreakoutPosition, openRsiBouncePosition]);
+  }, [openPosition]);
 
-  // Update prices and check trailing stops for BOTH strategies
+  // Update prices and check trailing stops for ALL strategies
   useEffect(() => {
     if (coins.length === 0) return;
 
-    // Update Breakout positions
-    setBreakoutPositions(prevPositions => {
-      const updatedPositions: Position[] = [];
-      const positionsToClose: { position: Position; currentPrice: number }[] = [];
+    const updatePositions = (
+      strategyId: StrategyId,
+      setState: React.Dispatch<React.SetStateAction<Omit<StrategyState, 'processedKeys'>>>
+    ) => {
+      setState(prevState => {
+        const updatedPositions: Position[] = [];
+        const positionsToClose: { position: Position; currentPrice: number }[] = [];
 
-      prevPositions.forEach(position => {
-        const coin = coins.find(c => c.symbol === position.symbol);
-        if (!coin) {
-          updatedPositions.push(position);
-          return;
-        }
-
-        const currentPrice = parseFloat(coin.price);
-        let newHighestPrice = position.highestPrice;
-        let newTrailingStopPrice = position.trailingStopPrice;
-
-        const exitFee = (position.quantity * currentPrice) * (FEE_PERCENT / 100);
-        const grossValue = position.quantity * currentPrice;
-        const netValue = grossValue - exitFee;
-        const pnlAmount = netValue - position.investedAmount;
-        const pnlPercent = (pnlAmount / position.investedAmount) * 100;
-
-        if (currentPrice > position.highestPrice) {
-          newHighestPrice = currentPrice;
-          newTrailingStopPrice = currentPrice * (1 - position.trailingStopPercent / 100);
-        }
-        
-        if (pnlPercent > PROFIT_LOCK_THRESHOLD) {
-          const lockPrice = position.entryPrice * (1 + PROFIT_LOCK_LEVEL / 100);
-          if (newTrailingStopPrice < lockPrice) {
-            newTrailingStopPrice = lockPrice;
+        prevState.positions.forEach(position => {
+          const coin = coins.find(c => c.symbol === position.symbol);
+          if (!coin) {
+            updatedPositions.push(position);
+            return;
           }
-        }
 
-        if (currentPrice <= newTrailingStopPrice) {
-          positionsToClose.push({ position, currentPrice });
-          return;
-        }
+          const currentPrice = parseFloat(coin.price);
+          let newHighestPrice = position.highestPrice;
+          let newTrailingStopPrice = position.trailingStopPrice;
 
-        updatedPositions.push({
-          ...position,
-          currentPrice,
-          highestPrice: newHighestPrice,
-          trailingStopPrice: newTrailingStopPrice,
-          pnlPercent,
-          pnlAmount,
-        });
-      });
+          const exitFee = (position.quantity * currentPrice) * (FEE_PERCENT / 100);
+          const grossValue = position.quantity * currentPrice;
+          const netValue = grossValue - exitFee;
+          const pnlAmount = netValue - position.investedAmount;
+          const pnlPercent = (pnlAmount / position.investedAmount) * 100;
 
-      positionsToClose.forEach(({ position, currentPrice }) => {
-        setTimeout(() => closeBreakoutPosition(position, currentPrice, 'وقف_زاحف'), 0);
-      });
-
-      return updatedPositions;
-    });
-
-    // Update RSI Bounce positions
-    setRsiBouncePositions(prevPositions => {
-      const updatedPositions: Position[] = [];
-      const positionsToClose: { position: Position; currentPrice: number }[] = [];
-
-      prevPositions.forEach(position => {
-        const coin = coins.find(c => c.symbol === position.symbol);
-        if (!coin) {
-          updatedPositions.push(position);
-          return;
-        }
-
-        const currentPrice = parseFloat(coin.price);
-        let newHighestPrice = position.highestPrice;
-        let newTrailingStopPrice = position.trailingStopPrice;
-
-        const exitFee = (position.quantity * currentPrice) * (FEE_PERCENT / 100);
-        const grossValue = position.quantity * currentPrice;
-        const netValue = grossValue - exitFee;
-        const pnlAmount = netValue - position.investedAmount;
-        const pnlPercent = (pnlAmount / position.investedAmount) * 100;
-
-        if (currentPrice > position.highestPrice) {
-          newHighestPrice = currentPrice;
-          newTrailingStopPrice = currentPrice * (1 - position.trailingStopPercent / 100);
-        }
-        
-        if (pnlPercent > PROFIT_LOCK_THRESHOLD) {
-          const lockPrice = position.entryPrice * (1 + PROFIT_LOCK_LEVEL / 100);
-          if (newTrailingStopPrice < lockPrice) {
-            newTrailingStopPrice = lockPrice;
+          if (currentPrice > position.highestPrice) {
+            newHighestPrice = currentPrice;
+            newTrailingStopPrice = currentPrice * (1 - position.trailingStopPercent / 100);
           }
-        }
+          
+          if (pnlPercent > PROFIT_LOCK_THRESHOLD) {
+            const lockPrice = position.entryPrice * (1 + PROFIT_LOCK_LEVEL / 100);
+            if (newTrailingStopPrice < lockPrice) {
+              newTrailingStopPrice = lockPrice;
+            }
+          }
 
-        if (currentPrice <= newTrailingStopPrice) {
-          positionsToClose.push({ position, currentPrice });
-          return;
-        }
+          if (currentPrice <= newTrailingStopPrice) {
+            positionsToClose.push({ position, currentPrice });
+            return;
+          }
 
-        updatedPositions.push({
-          ...position,
-          currentPrice,
-          highestPrice: newHighestPrice,
-          trailingStopPrice: newTrailingStopPrice,
-          pnlPercent,
-          pnlAmount,
+          updatedPositions.push({
+            ...position,
+            currentPrice,
+            highestPrice: newHighestPrice,
+            trailingStopPrice: newTrailingStopPrice,
+            pnlPercent,
+            pnlAmount,
+          });
         });
-      });
 
-      positionsToClose.forEach(({ position, currentPrice }) => {
-        setTimeout(() => closeRsiBouncePosition(position, currentPrice, 'وقف_زاحف'), 0);
-      });
+        positionsToClose.forEach(({ position, currentPrice }) => {
+          setTimeout(() => closePosition(position, currentPrice, 'وقف_زاحف', strategyId), 0);
+        });
 
-      return updatedPositions;
-    });
-  }, [coins, closeBreakoutPosition, closeRsiBouncePosition]);
+        return { ...prevState, positions: updatedPositions };
+      });
+    };
+
+    updatePositions('breakout', setBreakoutState);
+    updatePositions('rsi_bounce', setRsiBounceState);
+    updatePositions('institutional', setInstitutionalState);
+    updatePositions('crossover', setCrossoverState);
+  }, [coins, closePosition]);
 
   // Confirm pending
-  const confirmBreakoutPending = useCallback((pendingId: string) => {
-    const pending = breakoutPending.find(p => p.id === pendingId);
+  const confirmPending = useCallback((pendingId: string, strategyId: StrategyId) => {
+    const { state, setState } = getStrategyStateAndSetter(strategyId);
+    const pending = state.pendingOpportunities.find(p => p.id === pendingId);
     if (!pending) return;
-    setBreakoutPending(prev => prev.filter(p => p.id !== pendingId));
-    openBreakoutPosition(pending.opportunity, true);
-  }, [breakoutPending, openBreakoutPosition]);
-
-  const confirmRsiBoundPending = useCallback((pendingId: string) => {
-    const pending = rsiBoundPending.find(p => p.id === pendingId);
-    if (!pending) return;
-    setRsiBoundPending(prev => prev.filter(p => p.id !== pendingId));
-    openRsiBouncePosition(pending.opportunity, true);
-  }, [rsiBoundPending, openRsiBouncePosition]);
+    
+    setState(prev => ({
+      ...prev,
+      pendingOpportunities: prev.pendingOpportunities.filter(p => p.id !== pendingId),
+    }));
+    openPosition(pending.opportunity, true, strategyId);
+  }, [openPosition]);
 
   // Dismiss pending
-  const dismissBreakoutPending = useCallback((pendingId: string) => {
-    setBreakoutPending(prev => prev.filter(p => p.id !== pendingId));
-  }, []);
-
-  const dismissRsiBoundPending = useCallback((pendingId: string) => {
-    setRsiBoundPending(prev => prev.filter(p => p.id !== pendingId));
+  const dismissPending = useCallback((pendingId: string, strategyId: StrategyId) => {
+    const { setState } = getStrategyStateAndSetter(strategyId);
+    setState(prev => ({
+      ...prev,
+      pendingOpportunities: prev.pendingOpportunities.filter(p => p.id !== pendingId),
+    }));
   }, []);
 
   // Manual close
-  const manualCloseBreakout = useCallback((positionId: string) => {
-    const position = breakoutPositions.find(p => p.id === positionId);
+  const manualClose = useCallback((positionId: string, strategyId: StrategyId) => {
+    const { state } = getStrategyStateAndSetter(strategyId);
+    const position = state.positions.find(p => p.id === positionId);
     if (position) {
-      closeBreakoutPosition(position, position.currentPrice, 'بيع_يدوي');
+      closePosition(position, position.currentPrice, 'بيع_يدوي', strategyId);
     }
-  }, [breakoutPositions, closeBreakoutPosition]);
-
-  const manualCloseRsiBounce = useCallback((positionId: string) => {
-    const position = rsiBouncePositions.find(p => p.id === positionId);
-    if (position) {
-      closeRsiBouncePosition(position, position.currentPrice, 'بيع_يدوي');
-    }
-  }, [rsiBouncePositions, closeRsiBouncePosition]);
+  }, [closePosition]);
 
   // Reset functions
-  const resetBreakout = useCallback(() => {
-    setBreakoutPositions([]);
-    setBreakoutClosedTrades([]);
-    setBreakoutPending([]);
-    processedBreakout.current.clear();
-    setBreakoutBalance(STRATEGY_INITIAL_BALANCE);
-    addLogEntry(`[الاختراق] تم إعادة الضبط إلى ${STRATEGY_INITIAL_BALANCE} USDT`, 'info');
-  }, [addLogEntry]);
-
-  const resetRsiBounce = useCallback(() => {
-    setRsiBouncePositions([]);
-    setRsiBounceClosedTrades([]);
-    setRsiBoundPending([]);
-    processedRsiBounce.current.clear();
-    setRsiBounceBalance(STRATEGY_INITIAL_BALANCE);
-    addLogEntry(`[الارتداد] تم إعادة الضبط إلى ${STRATEGY_INITIAL_BALANCE} USDT`, 'info');
+  const resetStrategy = useCallback((strategyId: StrategyId) => {
+    const { setState, processed, config } = getStrategyStateAndSetter(strategyId);
+    setState({
+      balance: config.initialBalance,
+      positions: [],
+      closedTrades: [],
+      pendingOpportunities: [],
+    });
+    processed.current.clear();
+    addLogEntry(`${config.tag} تم إعادة الضبط إلى ${config.initialBalance} USDT`, 'info');
   }, [addLogEntry]);
 
   const resetAll = useCallback(() => {
-    resetBreakout();
-    resetRsiBounce();
+    resetStrategy('breakout');
+    resetStrategy('rsi_bounce');
+    resetStrategy('institutional');
+    resetStrategy('crossover');
     addLogEntry(`[افتراضي] تم إعادة ضبط جميع الاستراتيجيات`, 'info');
-  }, [resetBreakout, resetRsiBounce, addLogEntry]);
+  }, [resetStrategy, addLogEntry]);
 
   // Get data based on selected strategy filter
   const getDataForStrategy = useCallback((strategy: StrategyType) => {
-    if (strategy === 'breakout') {
+    const strategyId = strategyTypeToId(strategy);
+    
+    if (strategyId) {
+      const { state, config } = getStrategyStateAndSetter(strategyId);
+      const stats = strategyId === 'breakout' ? breakoutStats :
+                    strategyId === 'rsi_bounce' ? rsiBounceStats :
+                    strategyId === 'institutional' ? institutionalStats : crossoverStats;
+      const openValue = strategyId === 'breakout' ? breakoutOpenValue :
+                        strategyId === 'rsi_bounce' ? rsiBounceOpenValue :
+                        strategyId === 'institutional' ? institutionalOpenValue : crossoverOpenValue;
+
       return {
-        balance: breakoutBalance,
-        positions: breakoutPositions,
-        closedTrades: breakoutClosedTrades,
-        pendingOpportunities: breakoutPending,
-        performanceStats: breakoutStats,
-        openPositionsValue: breakoutOpenPositionsValue,
-        totalPortfolioValue: breakoutTotalPortfolio,
-        confirmPending: confirmBreakoutPending,
-        dismissPending: dismissBreakoutPending,
-        manualClose: manualCloseBreakout,
-        reset: resetBreakout,
-      };
-    } else if (strategy === 'rsiBounce') {
-      return {
-        balance: rsiBounceBalance,
-        positions: rsiBouncePositions,
-        closedTrades: rsiBounceClosedTrades,
-        pendingOpportunities: rsiBoundPending,
-        performanceStats: rsiBounceStats,
-        openPositionsValue: rsiBounceOpenPositionsValue,
-        totalPortfolioValue: rsiBoundTotalPortfolio,
-        confirmPending: confirmRsiBoundPending,
-        dismissPending: dismissRsiBoundPending,
-        manualClose: manualCloseRsiBounce,
-        reset: resetRsiBounce,
-      };
-    } else {
-      // Combined view
-      return {
-        balance: breakoutBalance + rsiBounceBalance,
-        positions: [...breakoutPositions, ...rsiBouncePositions],
-        closedTrades: [...breakoutClosedTrades, ...rsiBounceClosedTrades],
-        pendingOpportunities: [...breakoutPending, ...rsiBoundPending],
-        performanceStats: combinedStats,
-        openPositionsValue: breakoutOpenPositionsValue + rsiBounceOpenPositionsValue,
-        totalPortfolioValue: breakoutTotalPortfolio + rsiBoundTotalPortfolio,
-        confirmPending: (id: string) => {
-          confirmBreakoutPending(id);
-          confirmRsiBoundPending(id);
-        },
-        dismissPending: (id: string) => {
-          dismissBreakoutPending(id);
-          dismissRsiBoundPending(id);
-        },
-        manualClose: (id: string) => {
-          manualCloseBreakout(id);
-          manualCloseRsiBounce(id);
-        },
-        reset: resetAll,
+        balance: state.balance,
+        positions: state.positions,
+        closedTrades: state.closedTrades,
+        pendingOpportunities: state.pendingOpportunities,
+        performanceStats: stats,
+        openPositionsValue: openValue,
+        totalPortfolioValue: state.balance + openValue,
+        confirmPending: (id: string) => confirmPending(id, strategyId),
+        dismissPending: (id: string) => dismissPending(id, strategyId),
+        manualClose: (id: string) => manualClose(id, strategyId),
+        reset: () => resetStrategy(strategyId),
+        isExperimental: config.isExperimental,
+        label: config.label,
+        initialBalance: config.initialBalance,
       };
     }
+    
+    // Combined view (all strategies)
+    const allPositions = [...breakoutState.positions, ...rsiBounceState.positions, ...institutionalState.positions, ...crossoverState.positions];
+    const allClosedTrades = [...breakoutState.closedTrades, ...rsiBounceState.closedTrades, ...institutionalState.closedTrades, ...crossoverState.closedTrades];
+    const allPending = [...breakoutState.pendingOpportunities, ...rsiBounceState.pendingOpportunities, ...institutionalState.pendingOpportunities, ...crossoverState.pendingOpportunities];
+    const totalBalance = breakoutState.balance + rsiBounceState.balance + institutionalState.balance + crossoverState.balance;
+    const totalOpenValue = breakoutOpenValue + rsiBounceOpenValue + institutionalOpenValue + crossoverOpenValue;
+    const combinedStats = calculateStats(allClosedTrades);
+
+    return {
+      balance: totalBalance,
+      positions: allPositions,
+      closedTrades: allClosedTrades,
+      pendingOpportunities: allPending,
+      performanceStats: combinedStats,
+      openPositionsValue: totalOpenValue,
+      totalPortfolioValue: totalBalance + totalOpenValue,
+      confirmPending: (id: string) => {
+        confirmPending(id, 'breakout');
+        confirmPending(id, 'rsi_bounce');
+        confirmPending(id, 'institutional');
+        confirmPending(id, 'crossover');
+      },
+      dismissPending: (id: string) => {
+        dismissPending(id, 'breakout');
+        dismissPending(id, 'rsi_bounce');
+        dismissPending(id, 'institutional');
+        dismissPending(id, 'crossover');
+      },
+      manualClose: (id: string) => {
+        manualClose(id, 'breakout');
+        manualClose(id, 'rsi_bounce');
+        manualClose(id, 'institutional');
+        manualClose(id, 'crossover');
+      },
+      reset: resetAll,
+      isExperimental: false,
+      label: 'الكل',
+      initialBalance: CORE_STRATEGY_BALANCE * 2 + EXPERIMENTAL_STRATEGY_BALANCE * 2,
+    };
   }, [
-    breakoutBalance, breakoutPositions, breakoutClosedTrades, breakoutPending, breakoutStats,
-    breakoutOpenPositionsValue, breakoutTotalPortfolio,
-    rsiBounceBalance, rsiBouncePositions, rsiBounceClosedTrades, rsiBoundPending, rsiBounceStats,
-    rsiBounceOpenPositionsValue, rsiBoundTotalPortfolio,
-    combinedStats,
-    confirmBreakoutPending, confirmRsiBoundPending,
-    dismissBreakoutPending, dismissRsiBoundPending,
-    manualCloseBreakout, manualCloseRsiBounce,
-    resetBreakout, resetRsiBounce, resetAll,
+    breakoutState, rsiBounceState, institutionalState, crossoverState,
+    breakoutStats, rsiBounceStats, institutionalStats, crossoverStats,
+    breakoutOpenValue, rsiBounceOpenValue, institutionalOpenValue, crossoverOpenValue,
+    confirmPending, dismissPending, manualClose, resetStrategy, resetAll,
   ]);
 
   return {
@@ -628,22 +498,40 @@ export const useIsolatedVirtualTrading = (
     resetAll,
     // Individual strategy data
     breakout: {
-      balance: breakoutBalance,
-      positions: breakoutPositions,
-      closedTrades: breakoutClosedTrades,
-      pending: breakoutPending,
+      balance: breakoutState.balance,
+      positions: breakoutState.positions,
+      closedTrades: breakoutState.closedTrades,
+      pending: breakoutState.pendingOpportunities,
       stats: breakoutStats,
-      openPositionsValue: breakoutOpenPositionsValue,
-      totalPortfolio: breakoutTotalPortfolio,
+      openPositionsValue: breakoutOpenValue,
+      totalPortfolio: breakoutState.balance + breakoutOpenValue,
     },
     rsiBounce: {
-      balance: rsiBounceBalance,
-      positions: rsiBouncePositions,
-      closedTrades: rsiBounceClosedTrades,
-      pending: rsiBoundPending,
+      balance: rsiBounceState.balance,
+      positions: rsiBounceState.positions,
+      closedTrades: rsiBounceState.closedTrades,
+      pending: rsiBounceState.pendingOpportunities,
       stats: rsiBounceStats,
-      openPositionsValue: rsiBounceOpenPositionsValue,
-      totalPortfolio: rsiBoundTotalPortfolio,
+      openPositionsValue: rsiBounceOpenValue,
+      totalPortfolio: rsiBounceState.balance + rsiBounceOpenValue,
+    },
+    institutional: {
+      balance: institutionalState.balance,
+      positions: institutionalState.positions,
+      closedTrades: institutionalState.closedTrades,
+      pending: institutionalState.pendingOpportunities,
+      stats: institutionalStats,
+      openPositionsValue: institutionalOpenValue,
+      totalPortfolio: institutionalState.balance + institutionalOpenValue,
+    },
+    crossover: {
+      balance: crossoverState.balance,
+      positions: crossoverState.positions,
+      closedTrades: crossoverState.closedTrades,
+      pending: crossoverState.pendingOpportunities,
+      stats: crossoverStats,
+      openPositionsValue: crossoverOpenValue,
+      totalPortfolio: crossoverState.balance + crossoverOpenValue,
     },
   };
 };
