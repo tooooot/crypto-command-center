@@ -1,12 +1,11 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { CoinData } from './useBinanceData';
-import { StrategyResult, StrategyId } from './useStrategies';
+import { StrategyResult, StrategyId, STRATEGY_MANIFESTS, getVersion } from './useStrategies';
 import { Position, ClosedTrade, PerformanceStats, PendingOpportunity } from './usePaperTrading';
 import { StrategyType } from '@/components/dashboard/BalanceCard';
 
-const VIRTUAL_TRADE_AMOUNT = 100; // 100 USDT per trade in virtual mode
-const SCALPING_TRADE_AMOUNT = 1000; // 1000 USDT per trade for scalping (20% of 5000 balance)
-const SCALPING_STOP_LOSS_PERCENT = 0.8; // 0.8% stop loss for fast turnover
+// v2.1: Fixed trade amounts - 1000 USDT per trade (no micro-trades)
+const UNIFIED_TRADE_AMOUNT = 1000; // 1000 USDT per trade for ALL strategies
 const DEFAULT_TRAILING_STOP_PERCENT = 1;
 const FEE_PERCENT = 0.1;
 const MAX_OPEN_POSITIONS = 5; // Per strategy
@@ -16,7 +15,10 @@ const PROFIT_LOCK_LEVEL = 2;
 // Multi-Portfolio System: Each strategy gets isolated 5,000 USDT
 const UNIFIED_STRATEGY_BALANCE = 5000;
 
-// Strategy configurations
+// Auto-buy threshold: Any opportunity with score > 50/100 triggers instant buy
+const AUTO_BUY_SCORE_THRESHOLD = 50;
+
+// Strategy configurations with v2.1 rules
 interface StrategyConfig {
   id: StrategyId;
   label: string;
@@ -29,11 +31,11 @@ interface StrategyConfig {
 }
 
 const STRATEGY_CONFIGS: Record<StrategyId, StrategyConfig> = {
-  breakout: { id: 'breakout', label: 'الاختراق S10', tag: '[الاختراق]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: VIRTUAL_TRADE_AMOUNT },
-  rsi_bounce: { id: 'rsi_bounce', label: 'الارتداد S65', tag: '[الارتداد]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: VIRTUAL_TRADE_AMOUNT },
-  scalping: { id: 'scalping', label: 'النطاق S20', tag: '[النطاق]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: SCALPING_TRADE_AMOUNT, takeProfitPercent: 1.2, stopLossPercent: SCALPING_STOP_LOSS_PERCENT },
-  institutional: { id: 'institutional', label: 'المؤسسي', tag: '[المؤسسي]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: true, tradeAmount: VIRTUAL_TRADE_AMOUNT },
-  crossover: { id: 'crossover', label: 'التقاطعات', tag: '[التقاطعات]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: true, tradeAmount: VIRTUAL_TRADE_AMOUNT },
+  breakout: { id: 'breakout', label: 'الاختراق S10', tag: '[الاختراق]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: UNIFIED_TRADE_AMOUNT },
+  rsi_bounce: { id: 'rsi_bounce', label: 'الارتداد S65', tag: '[الارتداد]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: UNIFIED_TRADE_AMOUNT },
+  scalping: { id: 'scalping', label: 'النطاق S20', tag: '[النطاق]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: UNIFIED_TRADE_AMOUNT, takeProfitPercent: 1.2, stopLossPercent: 0.8 },
+  institutional: { id: 'institutional', label: 'المؤسسي', tag: '[المؤسسي]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: true, tradeAmount: UNIFIED_TRADE_AMOUNT },
+  crossover: { id: 'crossover', label: 'التقاطعات', tag: '[التقاطعات]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: true, tradeAmount: UNIFIED_TRADE_AMOUNT },
 };
 
 // Map StrategyType to StrategyId
@@ -163,7 +165,7 @@ export const useIsolatedVirtualTrading = (
   const institutionalOpenValue = useMemo(() => calculateOpenValue(institutionalState.positions), [institutionalState.positions]);
   const crossoverOpenValue = useMemo(() => calculateOpenValue(crossoverState.positions), [crossoverState.positions]);
 
-  // Close position helper
+  // Close position helper with v2.1 logging
   const closePosition = useCallback((
     position: Position,
     currentPrice: number,
@@ -171,6 +173,7 @@ export const useIsolatedVirtualTrading = (
     strategyId: StrategyId
   ) => {
     const { setState, config } = getStrategyStateAndSetter(strategyId);
+    const version = getVersion();
     
     const exitFee = (position.quantity * currentPrice) * (FEE_PERCENT / 100);
     const grossValue = position.quantity * currentPrice;
@@ -194,40 +197,49 @@ export const useIsolatedVirtualTrading = (
       isWin,
     };
 
-    setState(prev => ({
-      ...prev,
-      closedTrades: [...prev.closedTrades, closedTrade],
-      positions: prev.positions.filter(p => p.id !== position.id),
-      balance: prev.balance + netValue,
-    }));
+    setState(prev => {
+      const newBalance = prev.balance + netValue;
+      return {
+        ...prev,
+        closedTrades: [...prev.closedTrades, closedTrade],
+        positions: prev.positions.filter(p => p.id !== position.id),
+        balance: newBalance,
+      };
+    });
 
     const pnlSign = pnlAmount >= 0 ? '+' : '';
     const experimentalTag = config.isExperimental ? ':تجريبي' : '';
     addLogEntry(
-      `${config.tag}${experimentalTag}:${reason}] ${position.symbol} | ${pnlSign}${pnlPercent.toFixed(2)}%`,
+      `[${version}]${config.tag}${experimentalTag}:${reason}] ${position.symbol} | [${pnlSign}${pnlPercent.toFixed(2)}%] | [${pnlSign}$${pnlAmount.toFixed(2)}] | [سعر الخروج: $${currentPrice.toFixed(6)}]`,
       isWin ? 'success' : 'error'
     );
   }, [addLogEntry]);
 
-  // Open position helper
+  // Open position helper with v2.1 manifest logging
   const openPosition = useCallback((
     opportunity: StrategyResult,
     skipConfirmation: boolean,
     strategyId: StrategyId
   ) => {
     const { state, setState, processed, config } = getStrategyStateAndSetter(strategyId);
+    const version = getVersion();
     
     const existingPosition = state.positions.find(p => p.symbol === opportunity.symbol);
     if (existingPosition) return;
 
-    const tradeAmount = config.tradeAmount || VIRTUAL_TRADE_AMOUNT;
+    const tradeAmount = config.tradeAmount || UNIFIED_TRADE_AMOUNT;
+    const remainingBudget = state.balance;
 
-    if (state.balance < tradeAmount) {
-      addLogEntry(`${config.tag} الرصيد غير كافٍ`, 'warning');
+    if (remainingBudget < tradeAmount) {
+      addLogEntry(`[${version}]${config.tag} الرصيد غير كافٍ | المتبقي: ${remainingBudget.toFixed(0)} USDT`, 'warning');
       return;
     }
 
-    if (!skipConfirmation) {
+    // v2.1: Auto-buy if score > 50/100
+    const opportunityScore = opportunity.score || 0;
+    const shouldAutoBuy = opportunityScore > AUTO_BUY_SCORE_THRESHOLD;
+
+    if (!skipConfirmation && !shouldAutoBuy) {
       const pendingId = crypto.randomUUID();
       setState(prev => ({
         ...prev,
@@ -241,7 +253,7 @@ export const useIsolatedVirtualTrading = (
         }],
       }));
       const experimentalTag = config.isExperimental ? ':تجريبي' : '';
-      addLogEntry(`${config.tag}${experimentalTag}:انتظار] ${opportunity.symbol} | $${parseFloat(opportunity.price).toFixed(6)}`, 'warning');
+      addLogEntry(`[${version}]${config.tag}${experimentalTag}:انتظار] ${opportunity.symbol} | تقييم: ${opportunityScore}/100`, 'warning');
       return;
     }
 
@@ -251,9 +263,10 @@ export const useIsolatedVirtualTrading = (
     
     // For scalping, use take profit from opportunity or config
     const takeProfitPercent = opportunity.takeProfitPercent || config.takeProfitPercent;
+    const stopLossPercent = config.stopLossPercent || 1.5;
     
     const trailingStopPercent = strategyId === 'scalping' 
-      ? (takeProfitPercent ? takeProfitPercent * 0.5 : 0.5) // Tight stop for scalping
+      ? (stopLossPercent) // Fixed stop for scalping
       : (opportunity.atr 
         ? Math.max(0.5, Math.min(3, 1 + (opportunity.atr * 0.3))) 
         : DEFAULT_TRAILING_STOP_PERCENT);
@@ -283,10 +296,21 @@ export const useIsolatedVirtualTrading = (
       balance: prev.balance - tradeAmount,
     }));
 
+    // v2.1: Print strategy manifest on every buy
+    const manifest = STRATEGY_MANIFESTS[strategyId];
     const experimentalTag = config.isExperimental ? ':تجريبي' : '';
+    const autoTag = shouldAutoBuy ? ' [شراء تلقائي]' : '';
+    const newBudget = remainingBudget - tradeAmount;
+    
     addLogEntry(
-      `${config.tag}${experimentalTag}:شراء] ${opportunity.symbol} | $${entryPrice.toFixed(6)}${takeProfitPercent ? ` | TP:${takeProfitPercent.toFixed(1)}%` : ''}`,
+      `[${version}]${config.tag}${experimentalTag}:شراء${autoTag}] ${opportunity.symbol} | [المبلغ: ${tradeAmount} USDT] | [سعر الدخول: $${entryPrice.toFixed(6)}]${takeProfitPercent ? ` | [TP: ${takeProfitPercent.toFixed(1)}%]` : ''} | [SL: ${trailingStopPercent.toFixed(1)}%] | [الوقف الزاحف: نشط ${trailingStopPercent.toFixed(1)}%] | [الميزانية المتبقية: ${newBudget.toFixed(0)}/${UNIFIED_STRATEGY_BALANCE} USDT]`,
       'success'
+    );
+    
+    // Log strategy manifest
+    addLogEntry(
+      `[${version}][قانون ${manifest.name}]: ${manifest.rules.join(' | ')}`,
+      'info'
     );
   }, [breakoutState, rsiBounceState, scalpingState, institutionalState, crossoverState, addLogEntry]);
 

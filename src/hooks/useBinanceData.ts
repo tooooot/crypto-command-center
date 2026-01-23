@@ -43,10 +43,13 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const invalidSymbols = useRef<Set<string>>(new Set());
+  
+  // v2.1: Price cache to prevent bot stop on "Failed to fetch"
+  const priceCache = useRef<Map<string, CoinData>>(new Map());
 
   const fetchData = useCallback(async () => {
     try {
-      addLogEntry(`جاري الاتصال بـ Binance Mainnet API...`, 'info');
+      addLogEntry(`[v2.1] جاري الاتصال بـ Binance Mainnet API...`, 'info');
       
       const response = await fetch(BINANCE_API_URL);
       
@@ -55,7 +58,7 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
       }
 
       const data = await response.json();
-      addLogEntry('تم استلام البيانات. جاري معالجة أفضل 100 أصل بالحجم...', 'info');
+      addLogEntry('[v2.1] تم استلام البيانات. جاري معالجة أفضل 250 أصل بالحجم...', 'info');
 
       // Filter USDT pairs - strict validation
       const usdtPairs = data
@@ -91,15 +94,28 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
           lowPrice: coin.lowPrice,
         }));
 
+      // Update price cache with latest data
+      usdtPairs.forEach((coin: CoinData) => {
+        priceCache.current.set(coin.symbol, coin);
+      });
+
       setCoins(usdtPairs);
       setLastUpdate(new Date());
       setError(null);
-      addLogEntry(`[MAINNET] اكتمل الفحص. تم فهرسة ${usdtPairs.length} أصل من أفضل 250 بالحجم.`, 'success');
+      addLogEntry(`[v2.1][MAINNET] اكتمل الفحص. تم فهرسة ${usdtPairs.length} أصل من أفضل 250 بالحجم.`, 'success');
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'خطأ غير معروف';
       setError(errorMessage);
-      addLogEntry(`خطأ في الاتصال: ${errorMessage}`, 'error');
+      
+      // v2.1: Use cached prices on "Failed to fetch" to prevent bot stop
+      if (priceCache.current.size > 0) {
+        const cachedCoins = Array.from(priceCache.current.values());
+        setCoins(cachedCoins);
+        addLogEntry(`[v2.1][CACHE] خطأ في الاتصال: ${errorMessage} | استخدام آخر ${cachedCoins.length} سعر معروف`, 'warning');
+      } else {
+        addLogEntry(`[v2.1] خطأ في الاتصال: ${errorMessage}`, 'error');
+      }
     } finally {
       setLoading(false);
     }
@@ -116,12 +132,17 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
     
     // Refresh every 5 seconds for S20 priority scanning
     const interval = setInterval(() => {
-      addLogEntry('[S20-5s] بدء دورة التحديث السريع...', 'info');
+      addLogEntry('[v2.1][S20-5s] بدء دورة التحديث السريع...', 'info');
       fetchData();
     }, 5000);
 
     return () => clearInterval(interval);
   }, [fetchData, addLogEntry]);
 
-  return { coins, loading, error, lastUpdate, refetch: fetchData, markSymbolInvalid };
+  // Get cached price for a symbol (fallback when live data unavailable)
+  const getCachedPrice = useCallback((symbol: string): CoinData | null => {
+    return priceCache.current.get(symbol) || null;
+  }, []);
+
+  return { coins, loading, error, lastUpdate, refetch: fetchData, markSymbolInvalid, getCachedPrice };
 };
