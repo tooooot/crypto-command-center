@@ -36,7 +36,7 @@ const STRATEGY_CONFIGS: Record<StrategyId, StrategyConfig> = {
   breakout: { id: 'breakout', label: 'الاختراق S10', tag: '[الاختراق]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: UNIFIED_TRADE_AMOUNT },
   rsi_bounce: { id: 'rsi_bounce', label: 'الارتداد S65', tag: '[الارتداد]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: UNIFIED_TRADE_AMOUNT },
   scalping: { id: 'scalping', label: 'النطاق S20', tag: '[النطاق]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: UNIFIED_TRADE_AMOUNT, takeProfitPercent: 1.2, stopLossPercent: 0.8 },
-  institutional: { id: 'institutional', label: 'المؤسسي', tag: '[المؤسسي]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: true, tradeAmount: UNIFIED_TRADE_AMOUNT },
+  institutional: { id: 'institutional', label: 'المؤسسي', tag: '[المؤسسي]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: false, tradeAmount: UNIFIED_TRADE_AMOUNT }, // v2.1-Live: REAL EXECUTION (was experimental)
   crossover: { id: 'crossover', label: 'التقاطعات', tag: '[التقاطعات]', initialBalance: UNIFIED_STRATEGY_BALANCE, isExperimental: true, tradeAmount: UNIFIED_TRADE_AMOUNT },
 };
 

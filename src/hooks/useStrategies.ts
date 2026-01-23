@@ -242,11 +242,11 @@ export const useStrategies = (
       }
 
       // ═══════════════════════════════════════════════════════════════
-      // EXPERIMENTAL STRATEGIES (تجريبية) - v2.1 Flexible Entry
+      // 🏛️ INSTITUTIONAL STRATEGY - v2.1-Live: REAL EXECUTION (not experimental)
       // ═══════════════════════════════════════════════════════════════
       
       // 🏛️ Institutional Strategy: High Volume + Stable Movement
-      // v2.1: Allow volatility up to 10% (raised from 3%)
+      // v2.1-Live: Allow volatility up to 10%, RSI bypass in boost mode
       const institutionalRSIPass = boostActive ? true : (rsiValue < 70);
       if (volume24h > 50000000 && volatilityPercent < 10 && changePercent > 0.3 && changePercent < 5 && institutionalRSIPass) {
         const volumeScore = Math.min(40, (volume24h / 100000000) * 40);
@@ -267,7 +267,7 @@ export const useStrategies = (
           rsiValue,
           atr,
           volatilityPercent,
-          isExperimental: true,
+          isExperimental: false, // v2.1-Live: NOW REAL EXECUTION
           score: totalScore,
         });
       }

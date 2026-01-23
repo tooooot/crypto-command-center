@@ -52,8 +52,12 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
 
   const fetchData = useCallback(async () => {
     try {
-      // v2.1-Live: Silent fetch - no "connecting" logs
-      const response = await fetch(BINANCE_API_URL);
+      // v2.1-Live: 3-second timeout for API requests to handle high latency
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      
+      const response = await fetch(BINANCE_API_URL, { signal: controller.signal });
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
         throw new Error(`خطأ في API: ${response.status}`);
