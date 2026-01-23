@@ -1,4 +1,5 @@
-import { Wallet, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { Wallet, TrendingUp, TrendingDown, DollarSign, Bot } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 
 interface BalanceCardProps {
   balance: number;
@@ -8,6 +9,8 @@ interface BalanceCardProps {
   totalPnL: number;
   winRate: number;
   isLive?: boolean;
+  autoTrading: boolean;
+  onAutoTradingChange: (enabled: boolean) => void;
 }
 
 export const BalanceCard = ({
@@ -18,6 +21,8 @@ export const BalanceCard = ({
   totalPnL,
   winRate,
   isLive = true,
+  autoTrading,
+  onAutoTradingChange,
 }: BalanceCardProps) => {
   const balanceChange = totalPortfolioValue - initialBalance;
   const balanceChangePercent = ((totalPortfolioValue - initialBalance) / initialBalance) * 100;
@@ -25,7 +30,7 @@ export const BalanceCard = ({
 
   return (
     <div className="bg-card/50 rounded-2xl p-5 border border-border/50 backdrop-blur-sm">
-      {/* Header */}
+      {/* Header with Auto-Trading Toggle */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <div className={`p-2 rounded-xl ${isLive ? 'bg-terminal-green/20' : 'bg-blue-500/20'}`}>
@@ -38,6 +43,30 @@ export const BalanceCard = ({
         <span className={`text-xs px-2 py-0.5 rounded-full ${isLive ? 'bg-terminal-green/20 text-terminal-green' : 'bg-blue-500/20 text-blue-400'}`}>
           {isLive ? 'LIVE' : 'DEMO'}
         </span>
+      </div>
+
+      {/* Auto-Trading Toggle */}
+      <div className={`flex items-center justify-between p-3 rounded-xl mb-4 border ${
+        autoTrading 
+          ? 'bg-terminal-green/10 border-terminal-green/30' 
+          : 'bg-secondary/50 border-border/50'
+      }`}>
+        <div className="flex items-center gap-2">
+          <Bot className={`w-4 h-4 ${autoTrading ? 'text-terminal-green' : 'text-muted-foreground'}`} />
+          <div>
+            <span className={`text-sm font-medium ${autoTrading ? 'text-terminal-green' : 'text-muted-foreground'}`}>
+              التداول الآلي
+            </span>
+            <span className={`text-[10px] block ${autoTrading ? 'text-terminal-green/70' : 'text-muted-foreground/70'}`}>
+              {autoTrading ? 'تنفيذ تلقائي للصفقات' : 'وضع يدوي - تأكيد مطلوب'}
+            </span>
+          </div>
+        </div>
+        <Switch
+          checked={autoTrading}
+          onCheckedChange={onAutoTradingChange}
+          className={autoTrading ? 'data-[state=checked]:bg-terminal-green' : ''}
+        />
       </div>
 
       {/* Total Value */}
