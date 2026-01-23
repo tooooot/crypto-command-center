@@ -13,7 +13,7 @@ import { useBinanceData } from '@/hooks/useBinanceData';
 import { useStrategies } from '@/hooks/useStrategies';
 import { useOpportunityRanker } from '@/hooks/useOpportunityRanker';
 import { usePaperTrading } from '@/hooks/usePaperTrading';
-import { useVirtualTrading } from '@/hooks/useVirtualTrading';
+import { useIsolatedVirtualTrading } from '@/hooks/useIsolatedVirtualTrading';
 import { useAutoSync } from '@/hooks/useAutoSync';
 import { initDB, fullSystemReset } from '@/lib/indexedDB';
 
@@ -71,13 +71,18 @@ export const TradingDashboard = () => {
   // Live trading hook (sends to server)
   const liveTradingHook = usePaperTrading(liveBalance, setLiveBalance, coins, addLogEntry, true);
 
-  // Virtual trading hook (local only)
-  const virtualTradingHook = useVirtualTrading(VIRTUAL_INITIAL_BALANCE, coins, addLogEntry);
+  // Virtual trading hook with ISOLATED strategy engines
+  const isolatedVirtualTrading = useIsolatedVirtualTrading(coins, addLogEntry);
+
+  // Get virtual data based on selected strategy tab
+  const virtualData = useMemo(() => 
+    isolatedVirtualTrading.getDataForStrategy(virtualStrategy),
+    [isolatedVirtualTrading, virtualStrategy]
+  );
 
   // Get active trading hook based on tab
-  const activeTradingHook = activeTab === 'live' ? liveTradingHook : virtualTradingHook;
-  const activeBalance = activeTab === 'live' ? liveBalance : virtualTradingHook.virtualBalance;
-  const activeInitialBalance = activeTab === 'live' ? FALLBACK_BALANCE : VIRTUAL_INITIAL_BALANCE;
+  const activeBalance = activeTab === 'live' ? liveBalance : virtualData.balance;
+  const activeInitialBalance = activeTab === 'live' ? FALLBACK_BALANCE : (virtualStrategy === 'all' ? 10000 : 5000);
 
   const lastLoggedUpdate = useRef<string | null>(null);
 
@@ -162,32 +167,41 @@ export const TradingDashboard = () => {
               liveTradingHook.processOpportunities(liveFilteredOpps, false);
             }
             
-            // Process for VIRTUAL tab
+            // Process for VIRTUAL tab - uses isolated strategy engine
             if (isVirtualAutoEnabled && virtualFilteredOpps.length > 0) {
               // Auto mode: skip confirmation (true = execute immediately)
-              virtualTradingHook.processOpportunities(virtualFilteredOpps, true);
+              isolatedVirtualTrading.processOpportunities(virtualFilteredOpps, true, virtualStrategy);
               addLogEntry(`[آلي:افتراضي] تنفيذ فوري لـ ${virtualFilteredOpps.length} فرصة`, 'success');
             } else if (virtualFilteredOpps.length > 0) {
               // Manual mode: add to pending (false = require confirmation)
-              virtualTradingHook.processOpportunities(virtualFilteredOpps, false);
+              isolatedVirtualTrading.processOpportunities(virtualFilteredOpps, false, virtualStrategy);
             }
           }
         }
       }
     }
-  }, [coins, lastUpdate, results, allOpportunities, isPaused, liveAutoTrading, virtualAutoTrading, liveStrategy, virtualStrategy, getFilteredOpportunities, addLogEntry]);
+  }, [coins, lastUpdate, results, allOpportunities, isPaused, liveAutoTrading, virtualAutoTrading, liveStrategy, virtualStrategy, getFilteredOpportunities, isolatedVirtualTrading, addLogEntry]);
 
   // Handle golden opportunity buy
   const handleGoldenBuy = useCallback(() => {
-    if (goldenOpportunity && activeTradingHook.pendingOpportunities.length > 0) {
-      const pending = activeTradingHook.pendingOpportunities.find(
+    if (!goldenOpportunity) return;
+    
+    if (activeTab === 'live') {
+      const pending = liveTradingHook.pendingOpportunities.find(
         p => p.opportunity.symbol === goldenOpportunity.symbol
       );
       if (pending) {
-        activeTradingHook.confirmPendingOpportunity(pending.id);
+        liveTradingHook.confirmPendingOpportunity(pending.id);
+      }
+    } else {
+      const pending = virtualData.pendingOpportunities.find(
+        p => p.opportunity.symbol === goldenOpportunity.symbol
+      );
+      if (pending) {
+        virtualData.confirmPending(pending.id);
       }
     }
-  }, [goldenOpportunity, activeTradingHook]);
+  }, [goldenOpportunity, activeTab, liveTradingHook, virtualData]);
 
   const isConnected = !error && coins.length > 0;
   const opportunities = results.totalBreakouts + results.totalRsiBounces;
@@ -368,10 +382,10 @@ export const TradingDashboard = () => {
 
               {/* Total Value */}
               <div className="mb-4">
-                <span className="text-3xl font-bold text-foreground">${virtualTradingHook.totalPortfolioValue.toFixed(2)}</span>
-                <div className={`flex items-center gap-1 mt-1 text-sm ${virtualTradingHook.performanceStats.totalPnL >= 0 ? 'text-terminal-green' : 'text-terminal-red'}`}>
-                  {virtualTradingHook.performanceStats.totalPnL >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                  <span>{virtualTradingHook.performanceStats.totalPnL >= 0 ? '+' : ''}${virtualTradingHook.performanceStats.totalPnL.toFixed(2)}</span>
+                <span className="text-3xl font-bold text-foreground">${virtualData.totalPortfolioValue.toFixed(2)}</span>
+                <div className={`flex items-center gap-1 mt-1 text-sm ${virtualData.performanceStats.totalPnL >= 0 ? 'text-terminal-green' : 'text-terminal-red'}`}>
+                  {virtualData.performanceStats.totalPnL >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                  <span>{virtualData.performanceStats.totalPnL >= 0 ? '+' : ''}${virtualData.performanceStats.totalPnL.toFixed(2)}</span>
                 </div>
               </div>
 
@@ -379,24 +393,24 @@ export const TradingDashboard = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-secondary/50 rounded-xl p-3">
                   <span className="text-[10px] text-muted-foreground block mb-1">السيولة المتاحة</span>
-                  <span className="text-sm font-bold text-foreground">${virtualTradingHook.virtualBalance.toFixed(2)}</span>
+                  <span className="text-sm font-bold text-foreground">${virtualData.balance.toFixed(2)}</span>
                 </div>
                 <div className="bg-secondary/50 rounded-xl p-3">
                   <span className="text-[10px] text-muted-foreground block mb-1">قيمة العملات</span>
-                  <span className="text-sm font-bold text-foreground">${virtualTradingHook.openPositionsValue.toFixed(2)}</span>
+                  <span className="text-sm font-bold text-foreground">${virtualData.openPositionsValue.toFixed(2)}</span>
                 </div>
                 <div className="bg-secondary/50 rounded-xl p-3">
                   <span className="text-[10px] text-muted-foreground block mb-1">نسبة النجاح</span>
-                  <span className={`text-sm font-bold ${virtualTradingHook.performanceStats.winRate >= 50 ? 'text-terminal-green' : 'text-terminal-amber'}`}>
-                    {virtualTradingHook.performanceStats.winRate.toFixed(1)}%
+                  <span className={`text-sm font-bold ${virtualData.performanceStats.winRate >= 50 ? 'text-terminal-green' : 'text-terminal-amber'}`}>
+                    {virtualData.performanceStats.winRate.toFixed(1)}%
                   </span>
                 </div>
                 <div className="bg-secondary/50 rounded-xl p-3">
                   <span className="text-[10px] text-muted-foreground block mb-1">الاستراتيجية</span>
                   <span className="text-sm font-bold text-blue-400">
-                    {virtualStrategy === 'all' && 'الكل'}
-                    {virtualStrategy === 'breakout' && 'الاختراق'}
-                    {virtualStrategy === 'rsiBounce' && 'الارتداد'}
+                    {virtualStrategy === 'all' && 'الكل (10,000$)'}
+                    {virtualStrategy === 'breakout' && 'الاختراق (5,000$)'}
+                    {virtualStrategy === 'rsiBounce' && 'الارتداد (5,000$)'}
                   </span>
                 </div>
               </div>
@@ -404,27 +418,27 @@ export const TradingDashboard = () => {
 
             {/* Pending Opportunities */}
             <OpportunitiesList
-              pendingOpportunities={virtualTradingHook.pendingOpportunities}
+              pendingOpportunities={virtualData.pendingOpportunities}
               rankedOpportunities={rankedOpportunities}
-              onConfirm={virtualTradingHook.confirmPendingOpportunity}
-              onDismiss={virtualTradingHook.dismissPendingOpportunity}
+              onConfirm={virtualData.confirmPending}
+              onDismiss={virtualData.dismissPending}
               isLive={false}
             />
 
             {/* Positions */}
             <PositionsList
-              openPositions={virtualTradingHook.positions}
-              closedTrades={virtualTradingHook.closedTrades}
-              onClosePosition={virtualTradingHook.manualClosePosition}
+              openPositions={virtualData.positions}
+              closedTrades={virtualData.closedTrades}
+              onClosePosition={virtualData.manualClose}
             />
 
             {/* Reset Button */}
             <Button
               variant="outline"
-              onClick={virtualTradingHook.hardReset}
+              onClick={virtualData.reset}
               className="w-full border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
             >
-              إعادة ضبط المحفظة الافتراضية (10,000 USDT)
+              {virtualStrategy === 'all' ? 'إعادة ضبط جميع الاستراتيجيات' : `إعادة ضبط استراتيجية ${virtualStrategy === 'breakout' ? 'الاختراق' : 'الارتداد'}`}
             </Button>
           </TabsContent>
         </Tabs>
@@ -435,14 +449,14 @@ export const TradingDashboard = () => {
           onClear={clearAllLogs}
           diagnosticData={{
             virtualBalance: activeBalance,
-            openPositionsValue: activeTradingHook.openPositionsValue,
-            totalPortfolioValue: activeTradingHook.totalPortfolioValue,
+            openPositionsValue: activeTab === 'live' ? liveTradingHook.openPositionsValue : virtualData.openPositionsValue,
+            totalPortfolioValue: activeTab === 'live' ? liveTradingHook.totalPortfolioValue : virtualData.totalPortfolioValue,
             totalScanned: coins.length,
             opportunities,
-            openPositions: activeTradingHook.openPositionsCount,
-            totalTrades: activeTradingHook.performanceStats.totalTrades,
-            winRate: activeTradingHook.performanceStats.winRate,
-            totalPnL: activeTradingHook.performanceStats.totalPnL,
+            openPositions: activeTab === 'live' ? liveTradingHook.openPositionsCount : virtualData.positions.length,
+            totalTrades: activeTab === 'live' ? liveTradingHook.performanceStats.totalTrades : virtualData.performanceStats.totalTrades,
+            winRate: activeTab === 'live' ? liveTradingHook.performanceStats.winRate : virtualData.performanceStats.winRate,
+            totalPnL: activeTab === 'live' ? liveTradingHook.performanceStats.totalPnL : virtualData.performanceStats.totalPnL,
           }}
           isLive={activeTab === 'live'}
         />
