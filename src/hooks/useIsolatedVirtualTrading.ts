@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { CoinData } from './useBinanceData';
-import { StrategyResult, StrategyId, STRATEGY_MANIFESTS, getVersion } from './useStrategies';
+import { StrategyResult, StrategyId, STRATEGY_MANIFESTS } from './useStrategies';
+import { SYSTEM_VERSION } from '@/lib/version';
 import { Position, ClosedTrade, PerformanceStats, PendingOpportunity } from './usePaperTrading';
 import { StrategyType } from '@/components/dashboard/BalanceCard';
 
@@ -15,10 +16,9 @@ const PROFIT_LOCK_LEVEL = 2;
 // Multi-Portfolio System: Each strategy gets isolated 5,000 USDT
 const UNIFIED_STRATEGY_BALANCE = 5000;
 
-// v2.1-Final: Lowered auto-buy threshold for Institutional to 60/100 (was 50)
-// This allows TRX with score 65 to trigger instant buy
-const AUTO_BUY_SCORE_THRESHOLD = 50;
-const INSTITUTIONAL_AUTO_BUY_THRESHOLD = 60; // Special threshold for institutional strategy
+// v2.1-Live: Universal auto-buy threshold 60/100 for ALL strategies
+// This allows TRX (68/100) and any opportunity > 60 to trigger instant buy
+const UNIVERSAL_AUTO_BUY_THRESHOLD = 60; // Any score >= 60 = instant 1000 USDT buy
 
 // Strategy configurations with v2.1 rules
 interface StrategyConfig {
@@ -175,7 +175,7 @@ export const useIsolatedVirtualTrading = (
     strategyId: StrategyId
   ) => {
     const { setState, config } = getStrategyStateAndSetter(strategyId);
-    const version = getVersion();
+    const version = SYSTEM_VERSION;
     
     const exitFee = (position.quantity * currentPrice) * (FEE_PERCENT / 100);
     const grossValue = position.quantity * currentPrice;
@@ -224,7 +224,7 @@ export const useIsolatedVirtualTrading = (
     strategyId: StrategyId
   ) => {
     const { state, setState, processed, config } = getStrategyStateAndSetter(strategyId);
-    const version = getVersion();
+    const version = SYSTEM_VERSION;
     
     const existingPosition = state.positions.find(p => p.symbol === opportunity.symbol);
     if (existingPosition) return;
@@ -237,10 +237,9 @@ export const useIsolatedVirtualTrading = (
       return;
     }
 
-    // v2.1-Final: Auto-buy threshold - 60/100 for Institutional (to capture TRX at 65), 50 for others
+    // v2.1-Live: Universal auto-buy - ANY score >= 60 triggers instant 1000 USDT buy
     const opportunityScore = opportunity.score || 0;
-    const autoBuyThreshold = strategyId === 'institutional' ? INSTITUTIONAL_AUTO_BUY_THRESHOLD : AUTO_BUY_SCORE_THRESHOLD;
-    const shouldAutoBuy = opportunityScore >= autoBuyThreshold;
+    const shouldAutoBuy = opportunityScore >= UNIVERSAL_AUTO_BUY_THRESHOLD;
 
     if (!skipConfirmation && !shouldAutoBuy) {
       const pendingId = crypto.randomUUID();
