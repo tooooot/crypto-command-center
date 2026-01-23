@@ -15,7 +15,15 @@ export const useBinanceTestnet = (
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const callEdgeFunction = useCallback(async (body: any): Promise<OrderResponse> => {
+  // Auto-retry configuration for network errors
+  const MAX_RETRY_ATTEMPTS = 6;
+  const RETRY_INTERVAL_MS = 5000;
+
+  const callEdgeFunctionWithRetry = useCallback(async (
+    body: any, 
+    retryCount = 0,
+    silent = false
+  ): Promise<OrderResponse> => {
     try {
       const response = await fetch(`${SUPABASE_URL}/functions/v1/binance-testnet-trade`, {
         method: 'POST',
@@ -27,12 +35,46 @@ export const useBinanceTestnet = (
       });
 
       const data = await response.json();
+      
+      // Log successful retry recovery
+      if (retryCount > 0 && data.success && !silent) {
+        addLogEntry(`[TESTNET] ✓ نجاح بعد ${retryCount} محاولات إعادة`, 'success');
+      }
+      
       return data;
     } catch (error: any) {
+      const isNetworkError = error.message?.includes('Failed to fetch') || 
+                             error.message?.includes('Network') ||
+                             error.message?.includes('fetch');
+      
+      // Auto-retry on network errors
+      if (isNetworkError && retryCount < MAX_RETRY_ATTEMPTS) {
+        const nextRetry = retryCount + 1;
+        if (!silent) {
+          addLogEntry(
+            `[TESTNET] ⚠️ خطأ في الشبكة - إعادة المحاولة ${nextRetry}/${MAX_RETRY_ATTEMPTS} بعد ${RETRY_INTERVAL_MS/1000}ث...`,
+            'warning'
+          );
+        }
+        
+        // Wait before retry
+        await new Promise(resolve => setTimeout(resolve, RETRY_INTERVAL_MS));
+        return callEdgeFunctionWithRetry(body, nextRetry, silent);
+      }
+      
+      // Max retries exceeded or non-network error
       console.error('Edge function error:', error);
+      if (!silent && retryCount >= MAX_RETRY_ATTEMPTS) {
+        addLogEntry(`[TESTNET] ✗ فشل نهائي بعد ${MAX_RETRY_ATTEMPTS} محاولات: ${error.message}`, 'error');
+      }
       return { success: false, error: error.message };
     }
-  }, []);
+  }, [addLogEntry]);
+
+  // Original function for backward compatibility (uses retry by default)
+  const callEdgeFunction = useCallback(async (body: any): Promise<OrderResponse> => {
+    return callEdgeFunctionWithRetry(body, 0, false);
+  }, [callEdgeFunctionWithRetry]);
 
   const testConnection = useCallback(async (): Promise<boolean> => {
     setIsLoading(true);

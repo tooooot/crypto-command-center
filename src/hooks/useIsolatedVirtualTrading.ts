@@ -312,9 +312,9 @@ export const useIsolatedVirtualTrading = (
       
       if (!filterMatch) return;
       
-      // Auto-execute scalping in virtual mode (skip confirmation)
-      const isScalpingAuto = strategyId === 'scalping';
-      const shouldSkipConfirmation = skipConfirmation || isScalpingAuto;
+      // When auto-trading is ON (skipConfirmation=true), ALL strategies execute automatically
+      // This includes S10 (breakout), S65 (rsi_bounce), S20 (scalping), institutional, and crossover
+      const shouldSkipConfirmation = skipConfirmation;
       
       const opportunityKey = `${opportunity.symbol}-${strategyId}`;
       
