@@ -24,6 +24,8 @@ export const TradingDashboard = () => {
   const [liveBalance, setLiveBalance] = useState(FALLBACK_BALANCE);
   const [isPaused, setIsPaused] = useState(false);
   const [isBalanceLoaded, setIsBalanceLoaded] = useState(false);
+  const [liveAutoTrading, setLiveAutoTrading] = useState(false);
+  const [virtualAutoTrading, setVirtualAutoTrading] = useState(false);
 
   // Shared hooks
   const { logs, addLogEntry, clearAllLogs, reloadLogs } = useEventLog();
@@ -97,7 +99,24 @@ export const TradingDashboard = () => {
     init();
   }, []);
 
-  // Process opportunities based on active tab
+  // Handle auto-trading toggle with logging
+  const handleLiveAutoTradingChange = useCallback((enabled: boolean) => {
+    setLiveAutoTrading(enabled);
+    addLogEntry(
+      enabled ? '[LIVE] ✓ تم تفعيل التداول الآلي' : '[LIVE] ⚠ تم تفعيل التداول اليدوي',
+      enabled ? 'success' : 'warning'
+    );
+  }, [addLogEntry]);
+
+  const handleVirtualAutoTradingChange = useCallback((enabled: boolean) => {
+    setVirtualAutoTrading(enabled);
+    addLogEntry(
+      enabled ? '[افتراضي] ✓ تم تفعيل التداول الآلي' : '[افتراضي] ⚠ تم تفعيل التداول اليدوي',
+      enabled ? 'success' : 'warning'
+    );
+  }, [addLogEntry]);
+
+  // Process opportunities based on active tab and auto-trading setting
   useEffect(() => {
     if (coins.length > 0 && lastUpdate) {
       const updateKey = lastUpdate.toISOString();
@@ -111,13 +130,26 @@ export const TradingDashboard = () => {
             logGoldenOpportunity();
           }
           
-          if (!isPaused) {
+          // Only auto-execute if auto-trading is enabled for the active tab
+          const isAutoTradingEnabled = activeTab === 'live' ? liveAutoTrading : virtualAutoTrading;
+          
+          if (!isPaused && isAutoTradingEnabled) {
+            // Auto mode: skip confirmation
+            allOpportunities.forEach(opp => {
+              if (activeTab === 'live') {
+                liveTradingHook.processOpportunities([opp]);
+              } else {
+                virtualTradingHook.processOpportunities([opp]);
+              }
+            });
+          } else if (!isPaused) {
+            // Manual mode: add to pending (requires confirmation)
             activeTradingHook.processOpportunities(allOpportunities);
           }
         }
       }
     }
-  }, [coins, lastUpdate, results, allOpportunities, isPaused, activeTab]);
+  }, [coins, lastUpdate, results, allOpportunities, isPaused, activeTab, liveAutoTrading, virtualAutoTrading]);
 
   // Handle golden opportunity buy
   const handleGoldenBuy = useCallback(() => {
@@ -221,6 +253,8 @@ export const TradingDashboard = () => {
               totalPnL={liveTradingHook.performanceStats.totalPnL}
               winRate={liveTradingHook.performanceStats.winRate}
               isLive={true}
+              autoTrading={liveAutoTrading}
+              onAutoTradingChange={handleLiveAutoTradingChange}
             />
 
             {/* Pending Opportunities */}
@@ -258,6 +292,8 @@ export const TradingDashboard = () => {
               totalPnL={virtualTradingHook.performanceStats.totalPnL}
               winRate={virtualTradingHook.performanceStats.winRate}
               isLive={false}
+              autoTrading={virtualAutoTrading}
+              onAutoTradingChange={handleVirtualAutoTradingChange}
             />
 
             {/* Pending Opportunities */}
