@@ -58,15 +58,18 @@ export interface PerformanceStats {
   totalTrades: number;
 }
 
-const TRADE_AMOUNT = 10; // 10 USDT minimum per trade
+// v2.1-Live: Unified trade amount - 1000 USDT per trade
+const TRADE_AMOUNT = 1000; // 1000 USDT per trade
 const DEFAULT_TRAILING_STOP_PERCENT = 1; // 1% trailing stop (default)
 const FEE_PERCENT = 0.1; // 0.1% fee per transaction
+const SLIPPAGE_PERCENT = 0.2; // 0.2% slippage tolerance for market orders
 const RESERVED_BALANCE = 12; // Reserve 12 USDT from total balance
-const MIN_BALANCE_FOR_TRADE = 10; // Minimum 10 USDT
+const MIN_BALANCE_FOR_TRADE = 1000; // Minimum 1000 USDT
 const MAX_OPEN_POSITIONS = 10; // Maximum concurrent positions
 const PROFIT_LOCK_THRESHOLD = 3; // Lock profit when PnL > 3%
 const PROFIT_LOCK_LEVEL = 2; // Lock at 2% profit
-const RESERVED_PER_TRADE = 500; // Reserve 500 USDT per pending trade
+const RESERVED_PER_TRADE = 1000; // Reserve 1000 USDT per pending trade
+const UNIVERSAL_AUTO_BUY_THRESHOLD = 60; // v2.1-Live: Any score >= 60 = instant buy
 const MAX_RETRY_ATTEMPTS = 6; // Max retry attempts (30 seconds total)
 const RETRY_INTERVAL = 5000; // 5 seconds between retries
 
@@ -218,18 +221,19 @@ export const usePaperTrading = (
     
     addLogEntry(`[HANDSHAKE] ✓ السيرفر متصل | Latency: ${health.latency}ms`, 'success');
     
-    // Step 2: Execute trade
+    // Step 2: Execute trade with slippage tolerance
     const entryPrice = parseFloat(opportunity.price);
+    const priceWithSlippage = entryPrice * (1 + SLIPPAGE_PERCENT / 100); // 0.2% slippage for market order
     const fee = TRADE_AMOUNT * (FEE_PERCENT / 100);
-    const quantity = (TRADE_AMOUNT - fee) / entryPrice;
+    const quantity = (TRADE_AMOUNT - fee) / priceWithSlippage;
 
-    addLogEntry(`[TRADE_API] جاري إرسال أمر شراء ${opportunity.symbol}...`, 'info');
+    addLogEntry(`[v2.1-Live][TRADE] ${opportunity.symbol} | سعر السوق: $${entryPrice.toFixed(6)} | Slippage 0.2%: $${priceWithSlippage.toFixed(6)} | مبلغ: ${TRADE_AMOUNT} USDT`, 'info');
     
     const result = await sendTradeToServer({
       symbol: opportunity.symbol,
       side: 'BUY',
       quantity: quantity.toFixed(6),
-      price: opportunity.price,
+      price: priceWithSlippage.toFixed(8),
       strategyName: opportunity.strategyName,
     });
 
@@ -567,7 +571,7 @@ export const usePaperTrading = (
     });
   }, [coins, closePosition]);
 
-  // Process new opportunities - skipConfirmation bypasses manual confirmation when auto-trading is ON
+  // v2.1-Live: Process opportunities - AUTO-EXECUTE when score >= 60
   const processOpportunities = useCallback((opportunities: StrategyResult[], skipConfirmation: boolean = false) => {
     if (positions.length >= MAX_OPEN_POSITIONS) {
       return;
@@ -582,7 +586,16 @@ export const usePaperTrading = (
       const opportunityKey = `${opportunity.symbol}-${opportunity.strategy}`;
       
       if (!processedOpportunities.current.has(opportunityKey)) {
-        openPosition(opportunity, skipConfirmation);
+        // v2.1-Live: Universal Auto-Buy - ANY score >= 60 = instant execution
+        const opportunityScore = opportunity.score || 0;
+        const shouldAutoExecute = opportunityScore >= UNIVERSAL_AUTO_BUY_THRESHOLD;
+        
+        if (shouldAutoExecute) {
+          addLogEntry(`[v2.1-Live][تنفيذ_فوري] ${opportunity.symbol} | تقييم: ${opportunityScore}/100 ≥ 60 | المبلغ: ${TRADE_AMOUNT} USDT`, 'success');
+        }
+        
+        // Execute immediately if score >= 60 OR auto-trading is ON
+        openPosition(opportunity, skipConfirmation || shouldAutoExecute);
         processedOpportunities.current.add(opportunityKey);
         openedCount++;
         
@@ -591,7 +604,7 @@ export const usePaperTrading = (
         }, 60000);
       }
     }
-  }, [positions.length, openPosition]);
+  }, [positions.length, openPosition, addLogEntry]);
 
   // Manual close position
   const manualClosePosition = useCallback((positionId: string) => {

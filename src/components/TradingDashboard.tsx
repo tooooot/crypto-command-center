@@ -124,7 +124,7 @@ export const TradingDashboard = () => {
     },
     {
       id: 'institutional',
-      label: 'المؤسسي',
+      label: 'المؤسسي🏛️',
       balance: isolatedVirtualTrading.institutional.balance,
       openPositionsValue: isolatedVirtualTrading.institutional.openPositionsValue,
       totalPortfolio: isolatedVirtualTrading.institutional.totalPortfolio,
@@ -132,7 +132,7 @@ export const TradingDashboard = () => {
       roi: ((isolatedVirtualTrading.institutional.totalPortfolio - 5000) / 5000) * 100,
       trades: isolatedVirtualTrading.institutional.stats.totalTrades,
       winRate: isolatedVirtualTrading.institutional.stats.winRate,
-      isExperimental: true,
+      isExperimental: false, // v2.1-Live: NOW LIVE EXECUTION
     },
     {
       id: 'crossover',
@@ -209,8 +209,8 @@ export const TradingDashboard = () => {
       if (lastLoggedUpdate.current !== updateKey) {
         lastLoggedUpdate.current = updateKey;
         
-        // v2.1: ALWAYS log strategy results - even when no opportunities (forced visibility)
-        addLogEntry(`[v2.1][فحص] تم فهرسة ${coins.length} أصل | نظام القواعد نشط: [S10: 1000$, S20: 1000$, S65: 1000$]`, 'info');
+        // v2.1-Live: Log scan results with active strategy rules
+        addLogEntry(`[v2.1-Live][فحص] ${coins.length} أصل | قواعد نشطة: [S10: 1000$, S65: 1000$, S20: 1000$, 🏛️: 1000$] | عتبة التنفيذ: ≥60/100`, 'info');
         logStrategyResults(results);
         
         if (results.totalBreakouts > 0 || results.totalRsiBounces > 0 || results.totalScalpings > 0) {
