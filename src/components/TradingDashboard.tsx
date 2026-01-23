@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { Activity, Wifi, WifiOff, RefreshCw, Radio, Zap } from 'lucide-react';
+import { Activity, Wifi, WifiOff, RefreshCw, Radio, Zap, Wallet, Bot, TrendingUp, TrendingDown } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { BalanceCard } from '@/components/dashboard/BalanceCard';
 import { GoldenOpportunity } from '@/components/dashboard/GoldenOpportunity';
 import { OpportunitiesList } from '@/components/dashboard/OpportunitiesList';
@@ -301,8 +302,27 @@ export const TradingDashboard = () => {
             />
           </TabsContent>
 
-          {/* Virtual Trading Tab */}
+          {/* Virtual Trading Tab with Strategy Sub-Tabs */}
           <TabsContent value="virtual" className="mt-4 space-y-4">
+            {/* Strategy Sub-Navigation */}
+            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+              {(['all', 'breakout', 'rsiBounce'] as StrategyType[]).map((strategy) => (
+                <button
+                  key={strategy}
+                  onClick={() => setVirtualStrategy(strategy)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                    virtualStrategy === strategy
+                      ? 'bg-blue-500/20 text-blue-400 border border-blue-500/50'
+                      : 'bg-secondary/50 text-muted-foreground border border-border/50 hover:bg-secondary'
+                  }`}
+                >
+                  {strategy === 'all' && '📊 الكل'}
+                  {strategy === 'breakout' && '🚀 الاختراق'}
+                  {strategy === 'rsiBounce' && '📈 الارتداد'}
+                </button>
+              ))}
+            </div>
+
             {/* Golden Opportunity */}
             <GoldenOpportunity 
               opportunity={goldenOpportunity} 
@@ -310,20 +330,77 @@ export const TradingDashboard = () => {
               isLive={false}
             />
 
-            {/* Balance Card */}
-            <BalanceCard
-              balance={virtualTradingHook.virtualBalance}
-              openPositionsValue={virtualTradingHook.openPositionsValue}
-              totalPortfolioValue={virtualTradingHook.totalPortfolioValue}
-              initialBalance={VIRTUAL_INITIAL_BALANCE}
-              totalPnL={virtualTradingHook.performanceStats.totalPnL}
-              winRate={virtualTradingHook.performanceStats.winRate}
-              isLive={false}
-              autoTrading={virtualAutoTrading}
-              onAutoTradingChange={handleVirtualAutoTradingChange}
-              selectedStrategy={virtualStrategy}
-              onStrategyChange={setVirtualStrategy}
-            />
+            {/* Balance Card - without dropdown since we have tabs */}
+            <div className="bg-card/50 rounded-2xl p-5 border border-border/50 backdrop-blur-sm">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-blue-500/20">
+                    <Wallet className="w-5 h-5 text-blue-400" />
+                  </div>
+                  <span className="text-sm text-muted-foreground">المحفظة الافتراضية</span>
+                </div>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400">DEMO</span>
+              </div>
+
+              {/* Auto-Trading Toggle */}
+              <div className={`flex items-center justify-between p-3 rounded-xl mb-4 border ${
+                virtualAutoTrading 
+                  ? 'bg-terminal-green/10 border-terminal-green/30' 
+                  : 'bg-secondary/50 border-border/50'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <Bot className={`w-4 h-4 ${virtualAutoTrading ? 'text-terminal-green' : 'text-muted-foreground'}`} />
+                  <div>
+                    <span className={`text-sm font-medium ${virtualAutoTrading ? 'text-terminal-green' : 'text-muted-foreground'}`}>
+                      التداول الآلي
+                    </span>
+                    <span className={`text-[10px] block ${virtualAutoTrading ? 'text-terminal-green/70' : 'text-muted-foreground/70'}`}>
+                      {virtualAutoTrading ? 'تنفيذ تلقائي للصفقات' : 'وضع يدوي - تأكيد مطلوب'}
+                    </span>
+                  </div>
+                </div>
+                <Switch
+                  checked={virtualAutoTrading}
+                  onCheckedChange={handleVirtualAutoTradingChange}
+                  className={virtualAutoTrading ? 'data-[state=checked]:bg-terminal-green' : ''}
+                />
+              </div>
+
+              {/* Total Value */}
+              <div className="mb-4">
+                <span className="text-3xl font-bold text-foreground">${virtualTradingHook.totalPortfolioValue.toFixed(2)}</span>
+                <div className={`flex items-center gap-1 mt-1 text-sm ${virtualTradingHook.performanceStats.totalPnL >= 0 ? 'text-terminal-green' : 'text-terminal-red'}`}>
+                  {virtualTradingHook.performanceStats.totalPnL >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                  <span>{virtualTradingHook.performanceStats.totalPnL >= 0 ? '+' : ''}${virtualTradingHook.performanceStats.totalPnL.toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-secondary/50 rounded-xl p-3">
+                  <span className="text-[10px] text-muted-foreground block mb-1">السيولة المتاحة</span>
+                  <span className="text-sm font-bold text-foreground">${virtualTradingHook.virtualBalance.toFixed(2)}</span>
+                </div>
+                <div className="bg-secondary/50 rounded-xl p-3">
+                  <span className="text-[10px] text-muted-foreground block mb-1">قيمة العملات</span>
+                  <span className="text-sm font-bold text-foreground">${virtualTradingHook.openPositionsValue.toFixed(2)}</span>
+                </div>
+                <div className="bg-secondary/50 rounded-xl p-3">
+                  <span className="text-[10px] text-muted-foreground block mb-1">نسبة النجاح</span>
+                  <span className={`text-sm font-bold ${virtualTradingHook.performanceStats.winRate >= 50 ? 'text-terminal-green' : 'text-terminal-amber'}`}>
+                    {virtualTradingHook.performanceStats.winRate.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="bg-secondary/50 rounded-xl p-3">
+                  <span className="text-[10px] text-muted-foreground block mb-1">الاستراتيجية</span>
+                  <span className="text-sm font-bold text-blue-400">
+                    {virtualStrategy === 'all' && 'الكل'}
+                    {virtualStrategy === 'breakout' && 'الاختراق'}
+                    {virtualStrategy === 'rsiBounce' && 'الارتداد'}
+                  </span>
+                </div>
+              </div>
+            </div>
 
             {/* Pending Opportunities */}
             <OpportunitiesList
