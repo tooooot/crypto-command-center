@@ -1,9 +1,9 @@
 import { useMemo, useRef, useEffect } from 'react';
 import { CoinData } from './useBinanceData';
 
-// Core strategies (الكنز): breakout, rsi_bounce
+// Core strategies (الكنز): breakout, rsi_bounce, scalping
 // Experimental strategies (تجريبية): institutional, crossover
-export type StrategyId = 'breakout' | 'rsi_bounce' | 'institutional' | 'crossover';
+export type StrategyId = 'breakout' | 'rsi_bounce' | 'institutional' | 'crossover' | 'scalping';
 
 // Boost mode for experimental strategies (3 hours window)
 const BOOST_MODE_DURATION = 3 * 60 * 60 * 1000; // 3 hours in ms
@@ -22,6 +22,7 @@ export interface StrategyResult {
   atr?: number; // مؤشر ATR للتذبذب
   volatilityPercent?: number; // نسبة التذبذب
   isExperimental?: boolean; // علامة للاستراتيجيات التجريبية
+  takeProfitPercent?: number; // هدف الربح للنطاق
 }
 
 // Calculate simulated RSI based on price change momentum
@@ -94,6 +95,7 @@ export const useStrategies = (
     // Core strategies (الكنز)
     const breakouts: StrategyResult[] = [];
     const rsiBounces: StrategyResult[] = [];
+    const scalpings: StrategyResult[] = [];
     // Experimental strategies (تجريبية)
     const institutionals: StrategyResult[] = [];
     const crossovers: StrategyResult[] = [];
@@ -151,6 +153,31 @@ export const useStrategies = (
       }
 
       // ═══════════════════════════════════════════════════════════════
+      // 📊 SCALPING STRATEGY (النطاق) - S20: Low Volatility Range Trading
+      // ═══════════════════════════════════════════════════════════════
+      
+      // Conditions: Very low volatility (<1.5%) + RSI bouncing from 35 area
+      // Take Profit: 0.8% - 1.2% (quick scalps)
+      if (volatilityPercent < 1.5 && rsiValue >= 33 && rsiValue <= 42 && changePercent > 0.1 && changePercent < 1) {
+        const takeProfitPercent = 0.8 + (volatilityPercent * 0.3); // Dynamic TP based on volatility (0.8% - 1.2%)
+        const entryReason = `نطاق ضيق | تذبذب ${volatilityPercent.toFixed(2)}% | RSI ارتداد ${rsiValue.toFixed(0)} | هدف ${takeProfitPercent.toFixed(1)}%`;
+        scalpings.push({
+          symbol: coin.symbol,
+          price: coin.price,
+          priceChangePercent: coin.priceChangePercent,
+          strategy: 'scalping',
+          strategyName: 'سكالبينج النطاق',
+          entryReason,
+          volumeMultiplier,
+          rsiValue,
+          atr,
+          volatilityPercent,
+          isExperimental: false,
+          takeProfitPercent,
+        });
+      }
+
+      // ═══════════════════════════════════════════════════════════════
       // EXPERIMENTAL STRATEGIES (تجريبية) - للمقارنة فقط
       // ═══════════════════════════════════════════════════════════════
       
@@ -202,8 +229,10 @@ export const useStrategies = (
       // Core
       breakouts,
       rsiBounces,
+      scalpings,
       totalBreakouts: breakouts.length,
       totalRsiBounces: rsiBounces.length,
+      totalScalpings: scalpings.length,
       // Experimental
       institutionals,
       crossovers,
@@ -228,6 +257,14 @@ export const useStrategies = (
     results.rsiBounces.slice(0, 3).forEach((result) => {
       addLogEntry(
         `[الارتداد:S65] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | ${result.entryReason}`,
+        'warning'
+      );
+    });
+
+    // Scalping strategy
+    results.scalpings.slice(0, 3).forEach((result) => {
+      addLogEntry(
+        `[النطاق:S20] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | ${result.entryReason}`,
         'warning'
       );
     });
