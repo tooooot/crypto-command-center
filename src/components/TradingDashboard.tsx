@@ -209,8 +209,11 @@ export const TradingDashboard = () => {
       if (lastLoggedUpdate.current !== updateKey) {
         lastLoggedUpdate.current = updateKey;
         
-        if (results.totalBreakouts > 0 || results.totalRsiBounces > 0) {
-          logStrategyResults(results);
+        // v2.1: ALWAYS log strategy results - even when no opportunities (forced visibility)
+        addLogEntry(`[v2.1][فحص] تم فهرسة ${coins.length} أصل | نظام القواعد نشط: [S10: 1000$, S20: 1000$, S65: 1000$]`, 'info');
+        logStrategyResults(results);
+        
+        if (results.totalBreakouts > 0 || results.totalRsiBounces > 0 || results.totalScalpings > 0) {
           
           if (goldenOpportunity) {
             logGoldenOpportunity();

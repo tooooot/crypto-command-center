@@ -310,35 +310,63 @@ export const useStrategies = (
     };
   }, [coins]);
 
-  // Log strategy detections with detailed reasons and silence notifications
+  // Log strategy detections with detailed reasons and FORCED silence notifications
   const logStrategyResults = (results: ReturnType<typeof useStrategies>['results']) => {
     const boostActive = isBoostModeActive();
     const boostStatus = boostActive ? '[🚀 وضع التنشيط: نشط]' : '';
     
-    // Core strategies with v2.1 formatting
-    results.breakouts.slice(0, 3).forEach((result) => {
+    // === CORE STRATEGIES (الكنز) ===
+    
+    // S10: Breakout
+    if (results.breakouts.length > 0) {
+      results.breakouts.slice(0, 3).forEach((result) => {
+        addLogEntry(
+          `[${VERSION}][الاختراق:S10] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | تقييم: ${result.score || 0}/100 | ${result.entryReason}`,
+          'warning'
+        );
+      });
+    } else {
+      // FORCED: Technical reason for no S10 opportunities
       addLogEntry(
-        `[${VERSION}][الاختراق:S10] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | تقييم: ${result.score || 0}/100 | ${result.entryReason}`,
-        'warning'
+        `[${VERSION}][الاختراق:S10] لا فرص حالياً | السبب: لا يوجد أصل يحقق (تغير ≥1.5% + حجم ≥2.5x + تذبذب ≤10%)`,
+        'info'
       );
-    });
+    }
 
-    results.rsiBounces.slice(0, 3).forEach((result) => {
+    // S65: RSI Bounce
+    if (results.rsiBounces.length > 0) {
+      results.rsiBounces.slice(0, 3).forEach((result) => {
+        addLogEntry(
+          `[${VERSION}][الارتداد:S65] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | ${result.entryReason}`,
+          'warning'
+        );
+      });
+    } else {
+      // FORCED: Technical reason for no S65 opportunities
       addLogEntry(
-        `[${VERSION}][الارتداد:S65] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | ${result.entryReason}`,
-        'warning'
+        `[${VERSION}][الارتداد:S65] لا فرص حالياً | السبب: لا يوجد عبور RSI من تحت 35 إلى فوق 35`,
+        'info'
       );
-    });
+    }
 
-    // Scalping strategy
-    results.scalpings.slice(0, 3).forEach((result) => {
+    // S20: Scalping
+    if (results.scalpings.length > 0) {
+      results.scalpings.slice(0, 3).forEach((result) => {
+        addLogEntry(
+          `[${VERSION}][النطاق:S20] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | ${result.entryReason}`,
+          'warning'
+        );
+      });
+    } else {
+      // FORCED: Technical reason for no S20 opportunities
       addLogEntry(
-        `[${VERSION}][النطاق:S20] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | ${result.entryReason}`,
-        'warning'
+        `[${VERSION}][النطاق:S20] لا فرص حالياً | السبب: لا يوجد أصل يحقق (تذبذب <1.5% + RSI 33-42 + حجم >$10M)`,
+        'info'
       );
-    });
+    }
 
-    // Experimental strategies with boost tag
+    // === EXPERIMENTAL STRATEGIES (تجريبية) ===
+    
     if (results.institutionals.length > 0) {
       results.institutionals.slice(0, 2).forEach((result) => {
         addLogEntry(
@@ -348,7 +376,7 @@ export const useStrategies = (
       });
     } else {
       addLogEntry(
-        `[${VERSION}][المؤسسي🏛️]: لا توجد فرص تطابق شروط السيولة العالية (>$50M) والتذبذب (<10%) ${boostStatus}`,
+        `[${VERSION}][المؤسسي🏛️] لا فرص حالياً | السبب: لا يوجد أصل (سيولة >$50M + تذبذب <10%) ${boostStatus}`,
         'info'
       );
     }
@@ -363,12 +391,12 @@ export const useStrategies = (
     } else {
       const rsiRange = boostActive ? '35-65' : '45-55';
       addLogEntry(
-        `[${VERSION}][التقاطعات⚡]: لا توجد فرص في نطاق RSI المحايد (${rsiRange}) مع حجم كافٍ ${boostStatus}`,
+        `[${VERSION}][التقاطعات⚡] لا فرص حالياً | السبب: لا يوجد RSI محايد (${rsiRange}) مع حجم ≥1.8x ${boostStatus}`,
         'info'
       );
     }
 
-    // Log boost mode status once
+    // Boost mode status
     if (boostActive) {
       const remainingMs = BOOST_MODE_DURATION - (Date.now() - boostModeStart);
       const remainingHours = Math.floor(remainingMs / (60 * 60 * 1000));
