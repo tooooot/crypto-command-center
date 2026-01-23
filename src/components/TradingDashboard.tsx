@@ -209,8 +209,8 @@ export const TradingDashboard = () => {
       if (lastLoggedUpdate.current !== updateKey) {
         lastLoggedUpdate.current = updateKey;
         
-        // v2.1-Live: Log scan results with active strategy rules
-        addLogEntry(`[v2.1-Live][فحص] ${coins.length} أصل | قواعد نشطة: [S10: 1000$, S65: 1000$, S20: 1000$, 🏛️: 1000$] | عتبة التنفيذ: ≥60/100`, 'info');
+        // v2.2-Live: Log scan results with dynamic position sizing
+        addLogEntry(`[v2.2-Live:فحص] ${coins.length} أصل | Position Sizing: 40% من الرصيد | الحد الأدنى: 10 USDT | عتبة التنفيذ: ≥60/100`, 'info');
         logStrategyResults(results);
         
         if (results.totalBreakouts > 0 || results.totalRsiBounces > 0 || results.totalScalpings > 0) {
