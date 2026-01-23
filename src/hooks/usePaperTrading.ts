@@ -463,8 +463,8 @@ export const usePaperTrading = (
     });
   }, [coins, closePosition]);
 
-  // Process new opportunities
-  const processOpportunities = useCallback((opportunities: StrategyResult[]) => {
+  // Process new opportunities - skipConfirmation bypasses manual confirmation when auto-trading is ON
+  const processOpportunities = useCallback((opportunities: StrategyResult[], skipConfirmation: boolean = false) => {
     if (positions.length >= MAX_OPEN_POSITIONS) {
       return;
     }
@@ -478,7 +478,7 @@ export const usePaperTrading = (
       const opportunityKey = `${opportunity.symbol}-${opportunity.strategy}`;
       
       if (!processedOpportunities.current.has(opportunityKey)) {
-        openPosition(opportunity);
+        openPosition(opportunity, skipConfirmation);
         processedOpportunities.current.add(opportunityKey);
         openedCount++;
         

@@ -200,8 +200,8 @@ export const useVirtualTrading = (
     });
   }, [coins, closePosition]);
 
-  // Process opportunities
-  const processOpportunities = useCallback((opportunities: StrategyResult[]) => {
+  // Process opportunities - skipConfirmation bypasses manual confirmation when auto-trading is ON
+  const processOpportunities = useCallback((opportunities: StrategyResult[], skipConfirmation: boolean = false) => {
     if (positions.length >= MAX_OPEN_POSITIONS) return;
 
     const availableSlots = MAX_OPEN_POSITIONS - positions.length;
@@ -213,7 +213,7 @@ export const useVirtualTrading = (
       const opportunityKey = `${opportunity.symbol}-${opportunity.strategy}`;
       
       if (!processedOpportunities.current.has(opportunityKey)) {
-        openPosition(opportunity);
+        openPosition(opportunity, skipConfirmation);
         processedOpportunities.current.add(opportunityKey);
         openedCount++;
         

@@ -130,26 +130,35 @@ export const TradingDashboard = () => {
             logGoldenOpportunity();
           }
           
-          // Only auto-execute if auto-trading is enabled for the active tab
-          const isAutoTradingEnabled = activeTab === 'live' ? liveAutoTrading : virtualAutoTrading;
+          // Determine if auto-trading is enabled for the active tab
+          const isLiveAutoEnabled = liveAutoTrading;
+          const isVirtualAutoEnabled = virtualAutoTrading;
           
-          if (!isPaused && isAutoTradingEnabled) {
-            // Auto mode: skip confirmation
-            allOpportunities.forEach(opp => {
-              if (activeTab === 'live') {
-                liveTradingHook.processOpportunities([opp]);
-              } else {
-                virtualTradingHook.processOpportunities([opp]);
-              }
-            });
-          } else if (!isPaused) {
-            // Manual mode: add to pending (requires confirmation)
-            activeTradingHook.processOpportunities(allOpportunities);
+          if (!isPaused) {
+            // Process for LIVE tab
+            if (isLiveAutoEnabled) {
+              // Auto mode: skip confirmation (true = execute immediately)
+              liveTradingHook.processOpportunities(allOpportunities, true);
+              addLogEntry(`[آلي:LIVE] تنفيذ فوري لـ ${allOpportunities.length} فرصة`, 'success');
+            } else {
+              // Manual mode: add to pending (false = require confirmation)
+              liveTradingHook.processOpportunities(allOpportunities, false);
+            }
+            
+            // Process for VIRTUAL tab
+            if (isVirtualAutoEnabled) {
+              // Auto mode: skip confirmation (true = execute immediately)
+              virtualTradingHook.processOpportunities(allOpportunities, true);
+              addLogEntry(`[آلي:افتراضي] تنفيذ فوري لـ ${allOpportunities.length} فرصة`, 'success');
+            } else {
+              // Manual mode: add to pending (false = require confirmation)
+              virtualTradingHook.processOpportunities(allOpportunities, false);
+            }
           }
         }
       }
     }
-  }, [coins, lastUpdate, results, allOpportunities, isPaused, activeTab, liveAutoTrading, virtualAutoTrading]);
+  }, [coins, lastUpdate, results, allOpportunities, isPaused, liveAutoTrading, virtualAutoTrading, addLogEntry]);
 
   // Handle golden opportunity buy
   const handleGoldenBuy = useCallback(() => {
