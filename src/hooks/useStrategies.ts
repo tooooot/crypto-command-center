@@ -1,8 +1,9 @@
 import { useMemo, useRef, useEffect } from 'react';
 import { CoinData } from './useBinanceData';
+import { SYSTEM_VERSION } from '@/lib/version';
 
-// v2.1-Final - Ultra Flexible Entry System
-const VERSION = 'v2.1-Final';
+// v2.1-Live - Ultra Flexible Entry System
+const VERSION = SYSTEM_VERSION;
 
 // Core strategies (الكنز): breakout, rsi_bounce, scalping
 // Experimental strategies (تجريبية): institutional, crossover

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { SYSTEM_VERSION } from '@/lib/version';
 
 export interface CoinData {
   symbol: string;
@@ -44,13 +45,14 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const invalidSymbols = useRef<Set<string>>(new Set());
   
-  // v2.1: Price cache to prevent bot stop on "Failed to fetch"
+  // v2.1-Live: Price cache to prevent bot stop on "Failed to fetch"
   const priceCache = useRef<Map<string, CoinData>>(new Map());
+  // v2.1-Live: Reduced logging - only summary every 10 seconds
+  const lastSummaryLog = useRef<number>(0);
 
   const fetchData = useCallback(async () => {
     try {
-      addLogEntry(`[v2.1] جاري الاتصال بـ Binance Mainnet API...`, 'info');
-      
+      // v2.1-Live: Silent fetch - no "connecting" logs
       const response = await fetch(BINANCE_API_URL);
       
       if (!response.ok) {
@@ -58,7 +60,7 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
       }
 
       const data = await response.json();
-      addLogEntry('[v2.1] تم استلام البيانات. جاري معالجة أفضل 250 أصل بالحجم...', 'info');
+      // v2.1-Live: No "data received" log - only summary
 
       // Filter USDT pairs - strict validation
       const usdtPairs = data
@@ -102,19 +104,25 @@ export const useBinanceData = (addLogEntry: (message: string, type: 'info' | 'su
       setCoins(usdtPairs);
       setLastUpdate(new Date());
       setError(null);
-      addLogEntry(`[v2.1][MAINNET] اكتمل الفحص. تم فهرسة ${usdtPairs.length} أصل من أفضل 250 بالحجم.`, 'success');
+      
+      // v2.1-Live: Log summary every 10 seconds only (not every fetch)
+      const now = Date.now();
+      if (now - lastSummaryLog.current >= 10000) {
+        lastSummaryLog.current = now;
+        addLogEntry(`[${SYSTEM_VERSION}][ملخص] تم فحص ${usdtPairs.length} أصل | نظام القواعد نشط: [S10: 1000$, S20: 1000$, S65: 1000$]`, 'success');
+      }
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'خطأ غير معروف';
       setError(errorMessage);
       
-      // v2.1: Use cached prices on "Failed to fetch" to prevent bot stop
+      // v2.1-Live: Use cached prices on "Failed to fetch" to prevent bot stop
       if (priceCache.current.size > 0) {
         const cachedCoins = Array.from(priceCache.current.values());
         setCoins(cachedCoins);
-        addLogEntry(`[v2.1][CACHE] خطأ في الاتصال: ${errorMessage} | استخدام آخر ${cachedCoins.length} سعر معروف`, 'warning');
+        addLogEntry(`[${SYSTEM_VERSION}][CACHE] خطأ: ${errorMessage} | استخدام ${cachedCoins.length} سعر مخبأ`, 'warning');
       } else {
-        addLogEntry(`[v2.1] خطأ في الاتصال: ${errorMessage}`, 'error');
+        addLogEntry(`[${SYSTEM_VERSION}] خطأ في الاتصال: ${errorMessage}`, 'error');
       }
     } finally {
       setLoading(false);

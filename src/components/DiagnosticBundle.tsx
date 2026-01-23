@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { FileJson, Copy, Check } from 'lucide-react';
+import { SYSTEM_VERSION } from '@/lib/version';
 
 interface DiagnosticBundleProps {
   totalScanned: number;
@@ -17,8 +18,6 @@ interface DiagnosticBundleProps {
   totalPortfolioValue: number;
   isPaused?: boolean;
 }
-
-const VERSION = 'v2.1-Final';
 
 export const DiagnosticBundle = ({
   totalScanned,
@@ -37,7 +36,7 @@ export const DiagnosticBundle = ({
   const [copied, setCopied] = useState(false);
 
   const diagnosticData = {
-    الإصدار: VERSION,
+    الإصدار: SYSTEM_VERSION,
     الطابع_الزمني: lastUpdate?.toISOString() || new Date().toISOString(),
     النظام: {
       الحالة: 'يعمل بنجاح',
@@ -166,7 +165,7 @@ export const DiagnosticBundle = ({
           />
           <StatusCard
             label="الإصدار"
-            value={VERSION}
+            value={SYSTEM_VERSION}
             status="muted"
           />
         </div>
