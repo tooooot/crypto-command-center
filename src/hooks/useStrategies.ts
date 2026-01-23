@@ -1,17 +1,22 @@
 import { useMemo, useRef, useEffect } from 'react';
 import { CoinData } from './useBinanceData';
 
+// Core strategies (الكنز): breakout, rsi_bounce
+// Experimental strategies (تجريبية): institutional, crossover
+export type StrategyId = 'breakout' | 'rsi_bounce' | 'institutional' | 'crossover';
+
 export interface StrategyResult {
   symbol: string;
   price: string;
   priceChangePercent: string;
-  strategy: 'breakout' | 'rsi_bounce';
+  strategy: StrategyId;
   strategyName: string;
   entryReason: string; // سبب الدخول بالتفصيل
   volumeMultiplier?: number; // مضاعف الحجم
   rsiValue?: number; // قيمة RSI
   atr?: number; // مؤشر ATR للتذبذب
   volatilityPercent?: number; // نسبة التذبذب
+  isExperimental?: boolean; // علامة للاستراتيجيات التجريبية
 }
 
 // Calculate simulated RSI based on price change momentum
@@ -81,8 +86,12 @@ export const useStrategies = (
   }, [coins]);
 
   const results = useMemo(() => {
+    // Core strategies (الكنز)
     const breakouts: StrategyResult[] = [];
     const rsiBounces: StrategyResult[] = [];
+    // Experimental strategies (تجريبية)
+    const institutionals: StrategyResult[] = [];
+    const crossovers: StrategyResult[] = [];
 
     coins.forEach((coin) => {
       const changePercent = parseFloat(coin.priceChangePercent);
@@ -90,6 +99,11 @@ export const useStrategies = (
       const rsiValue = calculateSimulatedRSI(changePercent);
       const atr = calculateATR(coin);
       const volatilityPercent = atr;
+      const volume24h = parseFloat(coin.quoteVolume);
+      
+      // ═══════════════════════════════════════════════════════════════
+      // CORE STRATEGIES (الكنز) - لا تغيير على الإعدادات الأصلية
+      // ═══════════════════════════════════════════════════════════════
       
       // Strategy 10: Breakout Detection with Volume Confirmation
       // Conditions: ≥1.5% price explosion + volume 2.5x higher than average
@@ -106,6 +120,7 @@ export const useStrategies = (
           rsiValue,
           atr,
           volatilityPercent,
+          isExperimental: false,
         });
       }
 
@@ -125,31 +140,96 @@ export const useStrategies = (
           rsiValue: history.currentRSI,
           atr,
           volatilityPercent,
+          isExperimental: false,
+        });
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      // EXPERIMENTAL STRATEGIES (تجريبية) - للمقارنة فقط
+      // ═══════════════════════════════════════════════════════════════
+      
+      // 🏛️ Institutional Strategy: High Volume + Stable Movement
+      // Conditions: Volume > $50M/24h + Low volatility + Slight uptrend
+      if (volume24h > 50000000 && volatilityPercent < 3 && changePercent > 0.3 && changePercent < 2) {
+        const entryReason = `حجم مؤسسي $${(volume24h / 1000000).toFixed(0)}M | تذبذب منخفض ${volatilityPercent.toFixed(1)}%`;
+        institutionals.push({
+          symbol: coin.symbol,
+          price: coin.price,
+          priceChangePercent: coin.priceChangePercent,
+          strategy: 'institutional',
+          strategyName: 'صفقة مؤسسية',
+          entryReason,
+          volumeMultiplier,
+          rsiValue,
+          atr,
+          volatilityPercent,
+          isExperimental: true,
+        });
+      }
+
+      // ⚡ Crossover Strategy: RSI + Volume Alignment
+      // Conditions: RSI between 45-55 (neutral zone) + Volume spike + Price moving up
+      if (rsiValue >= 45 && rsiValue <= 55 && volumeMultiplier >= 1.8 && changePercent > 0.5) {
+        const entryReason = `تقاطع محايد RSI=${rsiValue.toFixed(0)} | حجم ${volumeMultiplier.toFixed(1)}x | زخم +${changePercent.toFixed(2)}%`;
+        crossovers.push({
+          symbol: coin.symbol,
+          price: coin.price,
+          priceChangePercent: coin.priceChangePercent,
+          strategy: 'crossover',
+          strategyName: 'تقاطع زخمي',
+          entryReason,
+          volumeMultiplier,
+          rsiValue,
+          atr,
+          volatilityPercent,
+          isExperimental: true,
         });
       }
     });
 
     return {
+      // Core
       breakouts,
       rsiBounces,
       totalBreakouts: breakouts.length,
       totalRsiBounces: rsiBounces.length,
+      // Experimental
+      institutionals,
+      crossovers,
+      totalInstitutionals: institutionals.length,
+      totalCrossovers: crossovers.length,
     };
   }, [coins]);
 
   // Log strategy detections with detailed reasons
   const logStrategyResults = (results: ReturnType<typeof useStrategies>['results']) => {
+    // Core strategies
     results.breakouts.slice(0, 3).forEach((result) => {
       addLogEntry(
-        `[استراتيجية_10] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | ${result.entryReason}`,
+        `[الاختراق:S10] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | ${result.entryReason}`,
         'warning'
       );
     });
 
     results.rsiBounces.slice(0, 3).forEach((result) => {
       addLogEntry(
-        `[استراتيجية_65] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | ${result.entryReason}`,
+        `[الارتداد:S65] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | ${result.entryReason}`,
         'warning'
+      );
+    });
+
+    // Experimental strategies
+    results.institutionals.slice(0, 2).forEach((result) => {
+      addLogEntry(
+        `[المؤسسي:تجريبي] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | ${result.entryReason}`,
+        'info'
+      );
+    });
+
+    results.crossovers.slice(0, 2).forEach((result) => {
+      addLogEntry(
+        `[التقاطعات:تجريبي] ${result.symbol} | $${parseFloat(result.price).toFixed(4)} | ${result.entryReason}`,
+        'info'
       );
     });
   };

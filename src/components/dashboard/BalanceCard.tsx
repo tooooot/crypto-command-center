@@ -8,7 +8,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 
-export type StrategyType = 'all' | 'breakout' | 'rsiBounce';
+// Core strategies (الكنز)
+export type CoreStrategyType = 'breakout' | 'rsiBounce';
+// Experimental strategies (تجريبية)
+export type ExperimentalStrategyType = 'institutional' | 'crossover';
+// All strategy types
+export type StrategyType = 'all' | CoreStrategyType | ExperimentalStrategyType;
 
 interface BalanceCardProps {
   balance: number;
@@ -24,10 +29,11 @@ interface BalanceCardProps {
   onStrategyChange: (strategy: StrategyType) => void;
 }
 
-const STRATEGY_LABELS: Record<StrategyType, string> = {
+// Only core strategies available for Live trading
+const LIVE_STRATEGY_LABELS: Record<'all' | CoreStrategyType, string> = {
   all: 'جميع الاستراتيجيات',
-  breakout: 'استراتيجية الاختراق',
-  rsiBounce: 'استراتيجية الارتداد',
+  breakout: '🚀 الاختراق (S10)',
+  rsiBounce: '📈 الارتداد (S65)',
 };
 
 export const BalanceCard = ({
@@ -82,7 +88,7 @@ export const BalanceCard = ({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* Strategy Dropdown */}
+          {/* Strategy Dropdown - Only Core Strategies for Live */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button 
@@ -90,19 +96,19 @@ export const BalanceCard = ({
                 size="sm" 
                 className="h-7 text-[10px] px-2 border-border/50 bg-secondary/50"
               >
-                {STRATEGY_LABELS[selectedStrategy]}
+                {LIVE_STRATEGY_LABELS[selectedStrategy as 'all' | CoreStrategyType] || 'الاستراتيجيات'}
                 <ChevronDown className="w-3 h-3 ms-1" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[160px]">
+            <DropdownMenuContent align="end" className="min-w-[180px] bg-card border-border z-50">
               <DropdownMenuItem onClick={() => onStrategyChange('all')}>
-                {STRATEGY_LABELS.all}
+                {LIVE_STRATEGY_LABELS.all}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onStrategyChange('breakout')}>
-                {STRATEGY_LABELS.breakout}
+                {LIVE_STRATEGY_LABELS.breakout}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onStrategyChange('rsiBounce')}>
-                {STRATEGY_LABELS.rsiBounce}
+                {LIVE_STRATEGY_LABELS.rsiBounce}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

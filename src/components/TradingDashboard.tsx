@@ -48,16 +48,18 @@ export const TradingDashboard = () => {
     handleBalanceUpdate
   );
 
-  // Combine opportunities and filter by selected strategy
+  // Combine all opportunities
   const allOpportunities = useMemo(() => {
-    return [...results.breakouts, ...results.rsiBounces];
+    return [...results.breakouts, ...results.rsiBounces, ...results.institutionals, ...results.crossovers];
   }, [results]);
 
-  // Filter opportunities based on selected strategy
+  // Filter opportunities based on selected strategy (for display and processing)
   const getFilteredOpportunities = useCallback((strategy: StrategyType) => {
     if (strategy === 'all') return allOpportunities;
     if (strategy === 'breakout') return results.breakouts;
     if (strategy === 'rsiBounce') return results.rsiBounces;
+    if (strategy === 'institutional') return results.institutionals;
+    if (strategy === 'crossover') return results.crossovers;
     return allOpportunities;
   }, [allOpportunities, results]);
 
@@ -318,23 +320,62 @@ export const TradingDashboard = () => {
 
           {/* Virtual Trading Tab with Strategy Sub-Tabs */}
           <TabsContent value="virtual" className="mt-4 space-y-4">
-            {/* Strategy Sub-Navigation */}
+            {/* Strategy Sub-Navigation - 4 Tabs */}
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-              {(['all', 'breakout', 'rsiBounce'] as StrategyType[]).map((strategy) => (
-                <button
-                  key={strategy}
-                  onClick={() => setVirtualStrategy(strategy)}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-                    virtualStrategy === strategy
-                      ? 'bg-blue-500/20 text-blue-400 border border-blue-500/50'
-                      : 'bg-secondary/50 text-muted-foreground border border-border/50 hover:bg-secondary'
-                  }`}
-                >
-                  {strategy === 'all' && '📊 الكل'}
-                  {strategy === 'breakout' && '🚀 الاختراق'}
-                  {strategy === 'rsiBounce' && '📈 الارتداد'}
-                </button>
-              ))}
+              {/* Core Strategies (الكنز) */}
+              <button
+                onClick={() => setVirtualStrategy('all')}
+                className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                  virtualStrategy === 'all'
+                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/50'
+                    : 'bg-secondary/50 text-muted-foreground border border-border/50 hover:bg-secondary'
+                }`}
+              >
+                📊 الكل
+              </button>
+              <button
+                onClick={() => setVirtualStrategy('breakout')}
+                className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                  virtualStrategy === 'breakout'
+                    ? 'bg-terminal-green/20 text-terminal-green border border-terminal-green/50'
+                    : 'bg-secondary/50 text-muted-foreground border border-border/50 hover:bg-secondary'
+                }`}
+              >
+                🚀 الاختراق
+              </button>
+              <button
+                onClick={() => setVirtualStrategy('rsiBounce')}
+                className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                  virtualStrategy === 'rsiBounce'
+                    ? 'bg-terminal-green/20 text-terminal-green border border-terminal-green/50'
+                    : 'bg-secondary/50 text-muted-foreground border border-border/50 hover:bg-secondary'
+                }`}
+              >
+                📈 الارتداد
+              </button>
+              
+              {/* Experimental Strategies (تجريبية) */}
+              <div className="w-px bg-border/50 mx-1" />
+              <button
+                onClick={() => setVirtualStrategy('institutional')}
+                className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                  virtualStrategy === 'institutional'
+                    ? 'bg-purple-500/20 text-purple-400 border border-purple-500/50'
+                    : 'bg-secondary/50 text-muted-foreground border border-border/50 hover:bg-secondary'
+                }`}
+              >
+                🏛️ المؤسسي
+              </button>
+              <button
+                onClick={() => setVirtualStrategy('crossover')}
+                className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                  virtualStrategy === 'crossover'
+                    ? 'bg-purple-500/20 text-purple-400 border border-purple-500/50'
+                    : 'bg-secondary/50 text-muted-foreground border border-border/50 hover:bg-secondary'
+                }`}
+              >
+                ⚡ التقاطعات
+              </button>
             </div>
 
             {/* Golden Opportunity */}
@@ -407,10 +448,9 @@ export const TradingDashboard = () => {
                 </div>
                 <div className="bg-secondary/50 rounded-xl p-3">
                   <span className="text-[10px] text-muted-foreground block mb-1">الاستراتيجية</span>
-                  <span className="text-sm font-bold text-blue-400">
-                    {virtualStrategy === 'all' && 'الكل (10,000$)'}
-                    {virtualStrategy === 'breakout' && 'الاختراق (5,000$)'}
-                    {virtualStrategy === 'rsiBounce' && 'الارتداد (5,000$)'}
+                  <span className={`text-sm font-bold ${virtualData.isExperimental ? 'text-purple-400' : 'text-blue-400'}`}>
+                    {virtualData.label} ({virtualData.initialBalance.toLocaleString()}$)
+                    {virtualData.isExperimental && <span className="text-[8px] mr-1 text-purple-300">تجريبي</span>}
                   </span>
                 </div>
               </div>
@@ -436,9 +476,11 @@ export const TradingDashboard = () => {
             <Button
               variant="outline"
               onClick={virtualData.reset}
-              className="w-full border-blue-500/50 text-blue-400 hover:bg-blue-500/10"
+              className={`w-full ${virtualData.isExperimental 
+                ? 'border-purple-500/50 text-purple-400 hover:bg-purple-500/10' 
+                : 'border-blue-500/50 text-blue-400 hover:bg-blue-500/10'}`}
             >
-              {virtualStrategy === 'all' ? 'إعادة ضبط جميع الاستراتيجيات' : `إعادة ضبط استراتيجية ${virtualStrategy === 'breakout' ? 'الاختراق' : 'الارتداد'}`}
+              إعادة ضبط {virtualData.label}
             </Button>
           </TabsContent>
         </Tabs>
