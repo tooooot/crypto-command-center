@@ -50,7 +50,7 @@ export const TradingDashboard = () => {
 
   // Combine all opportunities
   const allOpportunities = useMemo(() => {
-    return [...results.breakouts, ...results.rsiBounces, ...results.institutionals, ...results.crossovers];
+    return [...results.breakouts, ...results.rsiBounces, ...results.scalpings, ...results.institutionals, ...results.crossovers];
   }, [results]);
 
   // Filter opportunities based on selected strategy (for display and processing)
@@ -58,6 +58,7 @@ export const TradingDashboard = () => {
     if (strategy === 'all') return allOpportunities;
     if (strategy === 'breakout') return results.breakouts;
     if (strategy === 'rsiBounce') return results.rsiBounces;
+    if (strategy === 'scalping') return results.scalpings;
     if (strategy === 'institutional') return results.institutionals;
     if (strategy === 'crossover') return results.crossovers;
     return allOpportunities;
@@ -352,6 +353,16 @@ export const TradingDashboard = () => {
                 }`}
               >
                 📈 الارتداد
+              </button>
+              <button
+                onClick={() => setVirtualStrategy('scalping')}
+                className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                  virtualStrategy === 'scalping'
+                    ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
+                    : 'bg-secondary/50 text-muted-foreground border border-border/50 hover:bg-secondary'
+                }`}
+              >
+                📊 النطاق (S20)
               </button>
               
               {/* Experimental Strategies (تجريبية) */}

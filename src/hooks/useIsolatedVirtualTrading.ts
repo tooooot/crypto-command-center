@@ -5,6 +5,7 @@ import { Position, ClosedTrade, PerformanceStats, PendingOpportunity } from './u
 import { StrategyType } from '@/components/dashboard/BalanceCard';
 
 const VIRTUAL_TRADE_AMOUNT = 100; // 100 USDT per trade in virtual mode
+const SCALPING_TRADE_AMOUNT = 500; // 500 USDT per trade for scalping
 const DEFAULT_TRAILING_STOP_PERCENT = 1;
 const FEE_PERCENT = 0.1;
 const MAX_OPEN_POSITIONS = 5; // Per strategy
@@ -15,6 +16,8 @@ const PROFIT_LOCK_LEVEL = 2;
 const CORE_STRATEGY_BALANCE = 5000;
 // Experimental strategies share remaining budget
 const EXPERIMENTAL_STRATEGY_BALANCE = 2500;
+// Scalping gets dedicated capital
+const SCALPING_STRATEGY_BALANCE = 3000;
 
 // Strategy configurations
 interface StrategyConfig {
@@ -23,19 +26,23 @@ interface StrategyConfig {
   tag: string;
   initialBalance: number;
   isExperimental: boolean;
+  tradeAmount: number;
+  takeProfitPercent?: number;
 }
 
 const STRATEGY_CONFIGS: Record<StrategyId, StrategyConfig> = {
-  breakout: { id: 'breakout', label: 'الاختراق', tag: '[الاختراق]', initialBalance: CORE_STRATEGY_BALANCE, isExperimental: false },
-  rsi_bounce: { id: 'rsi_bounce', label: 'الارتداد', tag: '[الارتداد]', initialBalance: CORE_STRATEGY_BALANCE, isExperimental: false },
-  institutional: { id: 'institutional', label: 'المؤسسي', tag: '[المؤسسي]', initialBalance: EXPERIMENTAL_STRATEGY_BALANCE, isExperimental: true },
-  crossover: { id: 'crossover', label: 'التقاطعات', tag: '[التقاطعات]', initialBalance: EXPERIMENTAL_STRATEGY_BALANCE, isExperimental: true },
+  breakout: { id: 'breakout', label: 'الاختراق', tag: '[الاختراق]', initialBalance: CORE_STRATEGY_BALANCE, isExperimental: false, tradeAmount: VIRTUAL_TRADE_AMOUNT },
+  rsi_bounce: { id: 'rsi_bounce', label: 'الارتداد', tag: '[الارتداد]', initialBalance: CORE_STRATEGY_BALANCE, isExperimental: false, tradeAmount: VIRTUAL_TRADE_AMOUNT },
+  scalping: { id: 'scalping', label: 'النطاق', tag: '[النطاق]', initialBalance: SCALPING_STRATEGY_BALANCE, isExperimental: false, tradeAmount: SCALPING_TRADE_AMOUNT, takeProfitPercent: 1.0 },
+  institutional: { id: 'institutional', label: 'المؤسسي', tag: '[المؤسسي]', initialBalance: EXPERIMENTAL_STRATEGY_BALANCE, isExperimental: true, tradeAmount: VIRTUAL_TRADE_AMOUNT },
+  crossover: { id: 'crossover', label: 'التقاطعات', tag: '[التقاطعات]', initialBalance: EXPERIMENTAL_STRATEGY_BALANCE, isExperimental: true, tradeAmount: VIRTUAL_TRADE_AMOUNT },
 };
 
 // Map StrategyType to StrategyId
 const strategyTypeToId = (type: StrategyType): StrategyId | null => {
   if (type === 'breakout') return 'breakout';
   if (type === 'rsiBounce') return 'rsi_bounce';
+  if (type === 'scalping') return 'scalping';
   if (type === 'institutional') return 'institutional';
   if (type === 'crossover') return 'crossover';
   return null;
@@ -82,6 +89,13 @@ export const useIsolatedVirtualTrading = (
     pendingOpportunities: [],
   }));
   
+  const [scalpingState, setScalpingState] = useState<Omit<StrategyState, 'processedKeys'>>(() => ({
+    balance: SCALPING_STRATEGY_BALANCE,
+    positions: [],
+    closedTrades: [],
+    pendingOpportunities: [],
+  }));
+  
   const [institutionalState, setInstitutionalState] = useState<Omit<StrategyState, 'processedKeys'>>(() => ({
     balance: EXPERIMENTAL_STRATEGY_BALANCE,
     positions: [],
@@ -99,6 +113,7 @@ export const useIsolatedVirtualTrading = (
   // Processed keys refs
   const processedBreakout = useRef<Set<string>>(new Set());
   const processedRsiBounce = useRef<Set<string>>(new Set());
+  const processedScalping = useRef<Set<string>>(new Set());
   const processedInstitutional = useRef<Set<string>>(new Set());
   const processedCrossover = useRef<Set<string>>(new Set());
 
@@ -109,6 +124,8 @@ export const useIsolatedVirtualTrading = (
         return { state: breakoutState, setState: setBreakoutState, processed: processedBreakout, config: STRATEGY_CONFIGS.breakout };
       case 'rsi_bounce':
         return { state: rsiBounceState, setState: setRsiBounceState, processed: processedRsiBounce, config: STRATEGY_CONFIGS.rsi_bounce };
+      case 'scalping':
+        return { state: scalpingState, setState: setScalpingState, processed: processedScalping, config: STRATEGY_CONFIGS.scalping };
       case 'institutional':
         return { state: institutionalState, setState: setInstitutionalState, processed: processedInstitutional, config: STRATEGY_CONFIGS.institutional };
       case 'crossover':
@@ -137,12 +154,14 @@ export const useIsolatedVirtualTrading = (
   // Memoized stats for each strategy
   const breakoutStats = useMemo(() => calculateStats(breakoutState.closedTrades), [breakoutState.closedTrades]);
   const rsiBounceStats = useMemo(() => calculateStats(rsiBounceState.closedTrades), [rsiBounceState.closedTrades]);
+  const scalpingStats = useMemo(() => calculateStats(scalpingState.closedTrades), [scalpingState.closedTrades]);
   const institutionalStats = useMemo(() => calculateStats(institutionalState.closedTrades), [institutionalState.closedTrades]);
   const crossoverStats = useMemo(() => calculateStats(crossoverState.closedTrades), [crossoverState.closedTrades]);
 
   // Open positions values
   const breakoutOpenValue = useMemo(() => calculateOpenValue(breakoutState.positions), [breakoutState.positions]);
   const rsiBounceOpenValue = useMemo(() => calculateOpenValue(rsiBounceState.positions), [rsiBounceState.positions]);
+  const scalpingOpenValue = useMemo(() => calculateOpenValue(scalpingState.positions), [scalpingState.positions]);
   const institutionalOpenValue = useMemo(() => calculateOpenValue(institutionalState.positions), [institutionalState.positions]);
   const crossoverOpenValue = useMemo(() => calculateOpenValue(crossoverState.positions), [crossoverState.positions]);
 
@@ -203,7 +222,9 @@ export const useIsolatedVirtualTrading = (
     const existingPosition = state.positions.find(p => p.symbol === opportunity.symbol);
     if (existingPosition) return;
 
-    if (state.balance < VIRTUAL_TRADE_AMOUNT) {
+    const tradeAmount = config.tradeAmount || VIRTUAL_TRADE_AMOUNT;
+
+    if (state.balance < tradeAmount) {
       addLogEntry(`${config.tag} الرصيد غير كافٍ`, 'warning');
       return;
     }
@@ -226,13 +247,18 @@ export const useIsolatedVirtualTrading = (
       return;
     }
 
-    const fee = VIRTUAL_TRADE_AMOUNT * (FEE_PERCENT / 100);
+    const fee = tradeAmount * (FEE_PERCENT / 100);
     const entryPrice = parseFloat(opportunity.price);
-    const quantity = (VIRTUAL_TRADE_AMOUNT - fee) / entryPrice;
+    const quantity = (tradeAmount - fee) / entryPrice;
     
-    const trailingStopPercent = opportunity.atr 
-      ? Math.max(0.5, Math.min(3, 1 + (opportunity.atr * 0.3))) 
-      : DEFAULT_TRAILING_STOP_PERCENT;
+    // For scalping, use take profit from opportunity or config
+    const takeProfitPercent = opportunity.takeProfitPercent || config.takeProfitPercent;
+    
+    const trailingStopPercent = strategyId === 'scalping' 
+      ? (takeProfitPercent ? takeProfitPercent * 0.5 : 0.5) // Tight stop for scalping
+      : (opportunity.atr 
+        ? Math.max(0.5, Math.min(3, 1 + (opportunity.atr * 0.3))) 
+        : DEFAULT_TRAILING_STOP_PERCENT);
     const trailingStopPrice = entryPrice * (1 - trailingStopPercent / 100);
 
     const newPosition: Position = {
@@ -241,7 +267,7 @@ export const useIsolatedVirtualTrading = (
       entryPrice,
       currentPrice: entryPrice,
       quantity,
-      investedAmount: VIRTUAL_TRADE_AMOUNT,
+      investedAmount: tradeAmount,
       highestPrice: entryPrice,
       trailingStopPrice,
       trailingStopPercent,
@@ -256,15 +282,15 @@ export const useIsolatedVirtualTrading = (
     setState(prev => ({
       ...prev,
       positions: [...prev.positions, newPosition],
-      balance: prev.balance - VIRTUAL_TRADE_AMOUNT,
+      balance: prev.balance - tradeAmount,
     }));
 
     const experimentalTag = config.isExperimental ? ':تجريبي' : '';
     addLogEntry(
-      `${config.tag}${experimentalTag}:شراء] ${opportunity.symbol} | $${entryPrice.toFixed(6)}`,
+      `${config.tag}${experimentalTag}:شراء] ${opportunity.symbol} | $${entryPrice.toFixed(6)}${takeProfitPercent ? ` | TP:${takeProfitPercent.toFixed(1)}%` : ''}`,
       'success'
     );
-  }, [breakoutState, rsiBounceState, institutionalState, crossoverState, addLogEntry]);
+  }, [breakoutState, rsiBounceState, scalpingState, institutionalState, crossoverState, addLogEntry]);
 
   // Process opportunities - routes to correct strategy engine
   const processOpportunities = useCallback((
@@ -280,17 +306,22 @@ export const useIsolatedVirtualTrading = (
       const filterMatch = strategyFilter === 'all' || 
         (strategyFilter === 'breakout' && strategyId === 'breakout') ||
         (strategyFilter === 'rsiBounce' && strategyId === 'rsi_bounce') ||
+        (strategyFilter === 'scalping' && strategyId === 'scalping') ||
         (strategyFilter === 'institutional' && strategyId === 'institutional') ||
         (strategyFilter === 'crossover' && strategyId === 'crossover');
       
       if (!filterMatch) return;
+      
+      // Auto-execute scalping in virtual mode (skip confirmation)
+      const isScalpingAuto = strategyId === 'scalping';
+      const shouldSkipConfirmation = skipConfirmation || isScalpingAuto;
       
       const opportunityKey = `${opportunity.symbol}-${strategyId}`;
       
       if (state.positions.length >= MAX_OPEN_POSITIONS) return;
       if (processed.current.has(opportunityKey)) return;
       
-      openPosition(opportunity, skipConfirmation, strategyId);
+      openPosition(opportunity, shouldSkipConfirmation, strategyId);
       processed.current.add(opportunityKey);
       setTimeout(() => processed.current.delete(opportunityKey), 60000);
     });
@@ -362,6 +393,7 @@ export const useIsolatedVirtualTrading = (
 
     updatePositions('breakout', setBreakoutState);
     updatePositions('rsi_bounce', setRsiBounceState);
+    updatePositions('scalping', setScalpingState);
     updatePositions('institutional', setInstitutionalState);
     updatePositions('crossover', setCrossoverState);
   }, [coins, closePosition]);
@@ -413,6 +445,7 @@ export const useIsolatedVirtualTrading = (
   const resetAll = useCallback(() => {
     resetStrategy('breakout');
     resetStrategy('rsi_bounce');
+    resetStrategy('scalping');
     resetStrategy('institutional');
     resetStrategy('crossover');
     addLogEntry(`[افتراضي] تم إعادة ضبط جميع الاستراتيجيات`, 'info');
@@ -426,9 +459,11 @@ export const useIsolatedVirtualTrading = (
       const { state, config } = getStrategyStateAndSetter(strategyId);
       const stats = strategyId === 'breakout' ? breakoutStats :
                     strategyId === 'rsi_bounce' ? rsiBounceStats :
+                    strategyId === 'scalping' ? scalpingStats :
                     strategyId === 'institutional' ? institutionalStats : crossoverStats;
       const openValue = strategyId === 'breakout' ? breakoutOpenValue :
                         strategyId === 'rsi_bounce' ? rsiBounceOpenValue :
+                        strategyId === 'scalping' ? scalpingOpenValue :
                         strategyId === 'institutional' ? institutionalOpenValue : crossoverOpenValue;
 
       return {
@@ -450,11 +485,11 @@ export const useIsolatedVirtualTrading = (
     }
     
     // Combined view (all strategies)
-    const allPositions = [...breakoutState.positions, ...rsiBounceState.positions, ...institutionalState.positions, ...crossoverState.positions];
-    const allClosedTrades = [...breakoutState.closedTrades, ...rsiBounceState.closedTrades, ...institutionalState.closedTrades, ...crossoverState.closedTrades];
-    const allPending = [...breakoutState.pendingOpportunities, ...rsiBounceState.pendingOpportunities, ...institutionalState.pendingOpportunities, ...crossoverState.pendingOpportunities];
-    const totalBalance = breakoutState.balance + rsiBounceState.balance + institutionalState.balance + crossoverState.balance;
-    const totalOpenValue = breakoutOpenValue + rsiBounceOpenValue + institutionalOpenValue + crossoverOpenValue;
+    const allPositions = [...breakoutState.positions, ...rsiBounceState.positions, ...scalpingState.positions, ...institutionalState.positions, ...crossoverState.positions];
+    const allClosedTrades = [...breakoutState.closedTrades, ...rsiBounceState.closedTrades, ...scalpingState.closedTrades, ...institutionalState.closedTrades, ...crossoverState.closedTrades];
+    const allPending = [...breakoutState.pendingOpportunities, ...rsiBounceState.pendingOpportunities, ...scalpingState.pendingOpportunities, ...institutionalState.pendingOpportunities, ...crossoverState.pendingOpportunities];
+    const totalBalance = breakoutState.balance + rsiBounceState.balance + scalpingState.balance + institutionalState.balance + crossoverState.balance;
+    const totalOpenValue = breakoutOpenValue + rsiBounceOpenValue + scalpingOpenValue + institutionalOpenValue + crossoverOpenValue;
     const combinedStats = calculateStats(allClosedTrades);
 
     return {
@@ -468,30 +503,33 @@ export const useIsolatedVirtualTrading = (
       confirmPending: (id: string) => {
         confirmPending(id, 'breakout');
         confirmPending(id, 'rsi_bounce');
+        confirmPending(id, 'scalping');
         confirmPending(id, 'institutional');
         confirmPending(id, 'crossover');
       },
       dismissPending: (id: string) => {
         dismissPending(id, 'breakout');
         dismissPending(id, 'rsi_bounce');
+        dismissPending(id, 'scalping');
         dismissPending(id, 'institutional');
         dismissPending(id, 'crossover');
       },
       manualClose: (id: string) => {
         manualClose(id, 'breakout');
         manualClose(id, 'rsi_bounce');
+        manualClose(id, 'scalping');
         manualClose(id, 'institutional');
         manualClose(id, 'crossover');
       },
       reset: resetAll,
       isExperimental: false,
       label: 'الكل',
-      initialBalance: CORE_STRATEGY_BALANCE * 2 + EXPERIMENTAL_STRATEGY_BALANCE * 2,
+      initialBalance: CORE_STRATEGY_BALANCE * 2 + SCALPING_STRATEGY_BALANCE + EXPERIMENTAL_STRATEGY_BALANCE * 2,
     };
   }, [
-    breakoutState, rsiBounceState, institutionalState, crossoverState,
-    breakoutStats, rsiBounceStats, institutionalStats, crossoverStats,
-    breakoutOpenValue, rsiBounceOpenValue, institutionalOpenValue, crossoverOpenValue,
+    breakoutState, rsiBounceState, scalpingState, institutionalState, crossoverState,
+    breakoutStats, rsiBounceStats, scalpingStats, institutionalStats, crossoverStats,
+    breakoutOpenValue, rsiBounceOpenValue, scalpingOpenValue, institutionalOpenValue, crossoverOpenValue,
     confirmPending, dismissPending, manualClose, resetStrategy, resetAll,
   ]);
 
@@ -517,6 +555,15 @@ export const useIsolatedVirtualTrading = (
       stats: rsiBounceStats,
       openPositionsValue: rsiBounceOpenValue,
       totalPortfolio: rsiBounceState.balance + rsiBounceOpenValue,
+    },
+    scalping: {
+      balance: scalpingState.balance,
+      positions: scalpingState.positions,
+      closedTrades: scalpingState.closedTrades,
+      pending: scalpingState.pendingOpportunities,
+      stats: scalpingStats,
+      openPositionsValue: scalpingOpenValue,
+      totalPortfolio: scalpingState.balance + scalpingOpenValue,
     },
     institutional: {
       balance: institutionalState.balance,

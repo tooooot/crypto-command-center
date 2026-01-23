@@ -9,7 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 
 // Core strategies (الكنز)
-export type CoreStrategyType = 'breakout' | 'rsiBounce';
+export type CoreStrategyType = 'breakout' | 'rsiBounce' | 'scalping';
 // Experimental strategies (تجريبية)
 export type ExperimentalStrategyType = 'institutional' | 'crossover';
 // All strategy types
@@ -34,6 +34,7 @@ const LIVE_STRATEGY_LABELS: Record<'all' | CoreStrategyType, string> = {
   all: 'جميع الاستراتيجيات',
   breakout: '🚀 الاختراق (S10)',
   rsiBounce: '📈 الارتداد (S65)',
+  scalping: '📊 النطاق (S20)',
 };
 
 export const BalanceCard = ({
