@@ -106,13 +106,13 @@ export const TradingDashboard = () => {
 
   const lastLoggedUpdate = useRef<string | null>(null);
 
-  // Initialize
+  // Initialize - SYNC REAL BALANCE FROM BINANCE
   useEffect(() => {
     const init = async () => {
       await initDB();
-      addLogEntry('تم تهيئة النظام. نظام المسار المزدوج (Live/Virtual).', 'success');
+      addLogEntry('[v2.4-LIVE-ONLY] النظام في وضع التداول الحقيقي فقط', 'success');
       
-      // Fetch real balance
+      // Fetch real balance from Binance Mainnet
       try {
         const response = await fetch('https://lpwhiqtclpiuozxdaipc.supabase.co/functions/v1/binance-mainnet-trade', {
           method: 'POST',
@@ -127,11 +127,14 @@ export const TradingDashboard = () => {
         if (result.success && result.data?.balance !== undefined) {
           setLiveBalance(result.data.balance);
           setIsBalanceLoaded(true);
-          addLogEntry(`[LIVE] ✓ الرصيد الحقيقي: ${result.data.balance.toFixed(2)} USDT`, 'success');
+          addLogEntry(`[v2.4-LIVE-ONLY:SYNC] ✓ الرصيد الحقيقي: ${result.data.balance.toFixed(2)} USDT`, 'success');
+        } else {
+          setIsBalanceLoaded(true);
+          addLogEntry(`[v2.4-LIVE-ONLY:ERROR] فشل جلب الرصيد: ${result.error || 'خطأ غير معروف'}`, 'error');
         }
-      } catch {
+      } catch (err) {
         setIsBalanceLoaded(true);
-        addLogEntry(`[LIVE] ⚠ استخدام الرصيد الافتراضي`, 'warning');
+        addLogEntry(`[v2.4-LIVE-ONLY:ERROR] خطأ في الاتصال: ${(err as Error).message}`, 'error');
       }
     };
     init();
@@ -154,18 +157,16 @@ export const TradingDashboard = () => {
     );
   }, [addLogEntry]);
 
-  // v2.3-S20-Only: Process opportunities - only scalping (S20) is active
+  // v2.4-LIVE-ONLY: Process opportunities - only scalping (S20) is active
   useEffect(() => {
     if (coins.length > 0 && lastUpdate) {
       const updateKey = lastUpdate.toISOString();
       if (lastLoggedUpdate.current !== updateKey) {
         lastLoggedUpdate.current = updateKey;
         
-        // v2.3-S20-Only: Log scan results
-        addLogEntry(`[v2.3-S20:LIVE:فحص] ${coins.length} أصل | المحرك: S20 فقط | Position Sizing: 40% | الحد الأدنى: 10 USDT | عتبة ≥60`, 'info');
+        addLogEntry(`[v2.4-LIVE-ONLY:فحص] ${coins.length} أصل | المحرك: S20 | Position: 40% | Min: 10 USDT`, 'info');
         logStrategyResults(results);
         
-        // v2.3: Only check for scalping opportunities (S20)
         if (results.totalScalpings > 0) {
           
           if (goldenOpportunity) {
@@ -176,13 +177,12 @@ export const TradingDashboard = () => {
           const isVirtualAutoEnabled = virtualAutoTrading;
           
           if (!isPaused) {
-            // v2.3: Only use scalping results
             const scalpingOpps = results.scalpings;
             
-            // Process for LIVE tab
+            // Process for LIVE tab - REAL TRADING ONLY
             if (isLiveAutoEnabled && scalpingOpps.length > 0) {
               liveTradingHook.processOpportunities(scalpingOpps, true);
-              addLogEntry(`[v2.3-S20:LIVE:تنفيذ] ${scalpingOpps.length} فرصة S20`, 'success');
+              addLogEntry(`[v2.4-LIVE-ONLY:تنفيذ] ${scalpingOpps.length} فرصة S20 → Binance Mainnet`, 'success');
             } else if (scalpingOpps.length > 0) {
               liveTradingHook.processOpportunities(scalpingOpps, false);
             }
@@ -190,7 +190,6 @@ export const TradingDashboard = () => {
             // Process for VIRTUAL tab
             if (isVirtualAutoEnabled && scalpingOpps.length > 0) {
               isolatedVirtualTrading.processOpportunities(scalpingOpps, true, 'scalping');
-              addLogEntry(`[v2.3-S20:افتراضي:تنفيذ] ${scalpingOpps.length} فرصة S20`, 'success');
             } else if (scalpingOpps.length > 0) {
               isolatedVirtualTrading.processOpportunities(scalpingOpps, false, 'scalping');
             }

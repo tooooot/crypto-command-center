@@ -1,2 +1,2 @@
-// Centralized version constant - v2.2-Live
-export const SYSTEM_VERSION = 'v2.3-S20-Only';
+// Centralized version constant - v2.4 LIVE-ONLY (No Paper Trading)
+export const SYSTEM_VERSION = 'v2.4-LIVE-ONLY';
