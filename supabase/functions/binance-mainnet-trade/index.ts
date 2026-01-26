@@ -67,12 +67,26 @@ function generateSignature(queryString: string): string {
   return hmac.digest('hex');
 }
 
+// Get Binance server time to sync timestamps
+async function getBinanceServerTime(): Promise<number> {
+  try {
+    const response = await fetch(`${BINANCE_MAINNET_URL}/v3/time`);
+    const data = await response.json();
+    return data.serverTime;
+  } catch {
+    return Date.now();
+  }
+}
+
 async function getAccountBalance(): Promise<any> {
-  const timestamp = Date.now();
-  const queryString = `timestamp=${timestamp}`;
+  // Use Binance server time to avoid timestamp issues
+  const serverTime = await getBinanceServerTime();
+  const queryString = `timestamp=${serverTime}&recvWindow=10000`;
   const signature = generateSignature(queryString);
   
   const url = `${BINANCE_MAINNET_URL}/v3/account?${queryString}&signature=${signature}`;
+  
+  console.log(`[MAINNET] Fetching balance with server time: ${serverTime}`);
   
   const response = await proxyFetch(url, {
     method: 'GET',
@@ -115,7 +129,8 @@ async function placeOrder(
   side: 'BUY' | 'SELL',
   quantity: number
 ): Promise<any> {
-  const timestamp = Date.now();
+  // Use Binance server time to avoid timestamp issues
+  const serverTime = await getBinanceServerTime();
   
   // Build query params - MARKET order for instant execution
   const params: Record<string, string> = {
@@ -123,7 +138,8 @@ async function placeOrder(
     side: side,
     type: 'MARKET',
     quantity: quantity.toString(),
-    timestamp: timestamp.toString(),
+    timestamp: serverTime.toString(),
+    recvWindow: '10000',
   };
   
   const queryString = Object.entries(params)
@@ -149,8 +165,8 @@ async function placeOrder(
 }
 
 async function cancelOrder(symbol: string, orderId: number): Promise<any> {
-  const timestamp = Date.now();
-  const queryString = `symbol=${symbol}USDT&orderId=${orderId}&timestamp=${timestamp}`;
+  const serverTime = await getBinanceServerTime();
+  const queryString = `symbol=${symbol}USDT&orderId=${orderId}&timestamp=${serverTime}&recvWindow=10000`;
   const signature = generateSignature(queryString);
   
   const url = `${BINANCE_MAINNET_URL}/v3/order?${queryString}&signature=${signature}`;
@@ -168,8 +184,8 @@ async function cancelOrder(symbol: string, orderId: number): Promise<any> {
 }
 
 async function getOpenOrders(symbol?: string): Promise<any> {
-  const timestamp = Date.now();
-  let queryString = `timestamp=${timestamp}`;
+  const serverTime = await getBinanceServerTime();
+  let queryString = `timestamp=${serverTime}&recvWindow=10000`;
   if (symbol) {
     queryString = `symbol=${symbol}USDT&${queryString}`;
   }
